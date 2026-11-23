@@ -1,274 +1,108 @@
-# 🎮 RPG Maker Library
+# RPG Maker Library
 
-**Un catálogo de escritorio para organizar, clasificar y administrar tu colección de juegos RPG Maker.**
-
-RPG Maker Library es una aplicación de escritorio desarrollada en Python que permite gestionar bibliotecas de juegos mediante una interfaz visual, personalizable y respaldada por SQLite.
-
-Organiza tus juegos, conserva sus portadas, registra su progreso, clasifícalos mediante etiquetas y encuentra cualquier título fácilmente. Su vista de galería, inspirada en las bibliotecas modernas de videojuegos, permite explorar tu colección de una manera más visual.
-
----
+Una aplicación de escritorio para organizar, clasificar y administrar bibliotecas de juegos RPG Maker y otros proyectos similares. Permite mantener una colección organizada mediante portadas, códigos identificadores, estados, idiomas, categorías y etiquetas personalizadas.
 
 ## ✨ Características principales
 
-### 📚 Gestión de biblioteca
-- Registrar nuevos juegos, editar su información y eliminar entradas.
-- Asignar un código identificador único o personalizado a cada juego.
-- Guardar descripciones y rutas de las carpetas donde se encuentran los juegos.
-- Registrar el estado de progreso:
-  - 🟢 Terminado
-  - 🟠 Empezado
-  - ⚪ Sin empezar
-- Clasificar los juegos por idioma:
-  - Español
-  - Inglés
-  - Japonés
+- **Gestión de biblioteca:** agrega, edita y elimina juegos de tu colección.
+- **Galería y lista:** consulta tu biblioteca en diferentes formatos de visualización.
+- **Portadas:** almacena imágenes de los juegos directamente en la base de datos SQLite.
+- **Búsqueda y filtros:** encuentra juegos por título, código, estado, idioma, página o tipo.
+- **Clasificación personalizada:** organiza los juegos mediante etiquetas.
+- **Información detallada:** registra descripción, ruta, código identificador y puntuación.
+- **Estadísticas:** consulta información general de tu colección.
+- **Temas visuales:** interfaz con modos Claro, Oscuro y Noche.
+- **Personalización:** opciones de apariencia y compatibilidad con Nerd Fonts.
 
-### 🖼️ Galería de portadas
-- Vista de galería con tarjetas visuales inspiradas en Steam.
-- Miniaturas de portada almacenadas directamente en SQLite.
-- Compresión de imágenes a WebP para reducir el espacio ocupado.
-- Vista de lista para consultar rápidamente los datos de cada juego.
+## 📥 Importador masivo de juegos
 
-### 🔎 Búsqueda, filtros y ordenamiento
-- Búsqueda por título, código identificador y descripción.
-- Normalización de códigos para reconocer variantes como `RY-4762560`, `ry 4762560` y `RY4762560`.
-- Filtros combinables por estado, idioma y etiquetas.
-- Ordenamiento por:
-  - Nombre (A-Z)
-  - Nombre (Z-A)
-  - Código
-  - Estado
-  - Idioma
-  - Más recientes
+Incluye un script independiente para importar juegos existentes a la biblioteca sin tener que registrarlos manualmente uno por uno.
 
-### 🏷️ Clasificación personalizada
-- Asignación de una página o fuente de procedencia:
-  - Elonichan
-  - Estahi0
-  - lewdzone
-  - M0RETranslations
-  - Otome
-  - ryuugames
-  - Shorts
-  - Youtube
-- Clasificación por tipo:
-  - Visual Novel
-  - RPG
-  - Renpy
-  - 3d
-  - Otro
-- Etiquetas personalizadas para organizar la colección según tus propios criterios.
-- Puntuación de 0 a 5 estrellas.
+### Funcionalidades
 
-### 📊 Estadísticas
-- Total de juegos registrados.
-- Cantidad de juegos terminados, empezados y pendientes.
-- Porcentaje de progreso de la biblioteca.
-- Desglose de juegos por idioma.
-- Barra visual de progreso.
+- **Detección automática:** busca recursivamente archivos `.zip`, `.rar` y `.7z`, además de carpetas cuyo nombre contenga un código identificador RY.
+- **Interpretación de nombres:** intenta identificar automáticamente el título, código, estado e idioma del juego.
+- **Detección de estados:**
+  - `[F]`: Terminado.
+  - `[P]`: Empezado.
+  - Sin marca reconocida: Sin empezar.
+- **Detección de idiomas:**
+  - `EN`: Inglés.
+  - `ES` o `ESP`: Español.
+  - Sin marca de idioma reconocida: Japonés.
+- **Prevención de duplicados:** evita importar códigos RY y rutas que ya estén registrados en la base de datos.
+- **Vista previa:** muestra los juegos detectados y la información que se utilizará antes de confirmar la importación.
+- **Resumen de resultados:** informa cuántos registros se agregaron, cuántos se omitieron por duplicados y cuántos no tenían un código RY.
 
-### 🎨 Personalización
-- Tres temas visuales:
-  - Claro
-  - Oscuro
-  - Noche
-- Tema Noche con tonos cálidos y menor presencia de luz azul.
-- Compatibilidad con Nerd Fonts para mostrar iconos en la interfaz.
-- Selección de fuente y tamaño de texto.
-- Preferencias guardadas automáticamente en `config.json`.
+### Consideraciones
 
----
+- Solo importa elementos que tengan un código identificador RY reconocido.
+- Los registros nuevos se crean con la descripción y la portada vacías, para completarlas posteriormente desde el catálogo.
+- No extrae archivos comprimidos.
+- No mueve, renombra ni modifica los archivos originales.
+- Utiliza la misma base de datos `juegos.db` del catálogo.
 
-## 🖥️ Capturas de pantalla
+### Ejecución
 
-> Puedes colocar tus capturas en una carpeta `screenshots/` dentro del repositorio y actualizar las rutas siguientes.
+```bash
+python Importar_Juegos_RPG_Maker_v2.py
+```
 
-| Vista principal | Galería |
-|:---:|:---:|
-| ![Vista principal](screenshots/main.png) | ![Galería](screenshots/gallery.png) |
+También permite indicar las rutas directamente:
 
-| Tema oscuro | Tema noche |
-|:---:|:---:|
-| ![Tema oscuro](screenshots/dark.png) | ![Tema noche](screenshots/night.png) |
+```bash
+python Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/ruta/a/juegos.db"
+```
 
----
+## 🛠️ Tecnologías
 
-## 🛠️ Tecnologías utilizadas
+- **Python:** lenguaje principal.
+- **Tkinter / ttk:** interfaz gráfica.
+- **SQLite:** almacenamiento local de información.
+- **Pillow:** procesamiento de imágenes.
+- **WebP / JPEG:** formatos utilizados para optimizar las portadas.
 
-| Tecnología | Uso |
+## 📂 Archivos principales
+
+| Archivo | Descripción |
 |---|---|
-| Python | Lenguaje principal |
-| Tkinter / ttk | Interfaz gráfica |
-| SQLite | Base de datos local |
-| Pillow | Procesamiento y compresión de imágenes |
-| WebP | Almacenamiento optimizado de portadas |
-| Nerd Fonts | Iconografía opcional |
+| `catalogo_rpgmaker-v04.py` | Aplicación principal del catálogo. |
+| `Importar_Juegos_RPG_Maker_v2.py` | Herramienta independiente para importar juegos existentes. |
+| `juegos.db` | Base de datos SQLite de la biblioteca. |
+| `config.json` | Preferencias y configuración visual. |
 
-La aplicación no necesita un servidor ni una conexión a Internet para administrar la biblioteca.
+## 🗃️ Base de datos
 
----
+La aplicación utiliza SQLite para almacenar la información de la colección.
 
-## 📦 Instalación
+Entre los datos principales de cada juego se encuentran:
 
-### Requisitos
+- `id`: identificador interno.
+- `titulo`: nombre del juego.
+- `descripcion`: descripción.
+- `estado`: Sin empezar, Empezado o Terminado.
+- `idioma`: Español, Inglés o Japonés.
+- `imagen`: portada almacenada en la base de datos.
+- `ruta`: ubicación del juego.
+- `codigo`: identificador personalizado.
+- `pagina`: fuente o página de procedencia.
+- `tipo`: clasificación del juego.
+- `puntuacion`: valoración de 0 a 5 estrellas.
 
-- Python instalado.
-- Pillow.
-- Tkinter disponible en la instalación de Python.
+También utiliza tablas relacionadas para administrar etiquetas personalizadas.
 
-### 1. Clonar el repositorio
+## 💾 Copias de seguridad
 
-```bash
-git clone https://github.com/TU-USUARIO/TU-REPOSITORIO.git
-```
+Se recomienda realizar copias periódicas de `juegos.db`, ya que contiene la información de la biblioteca y las portadas almacenadas.
 
-### 2. Entrar en la carpeta
+## 🖥️ Plataformas
 
-```bash
-cd TU-REPOSITORIO
-```
-
-### 3. Instalar dependencias
-
-```bash
-pip install pillow
-```
-
-### 4. Ejecutar la aplicación
-
-**Windows:**
-
-```bash
-python catalogo_rpgmaker-v04.py
-```
-
-**Linux:**
-
-```bash
-python3 catalogo_rpgmaker-v04.py
-```
-
----
-
-## 🗂️ Estructura de archivos
-
-Al ejecutar la aplicación, se generan los archivos necesarios para conservar la biblioteca y las preferencias:
-
-```text
-RPG-Maker-Library/
-│
-├── catalogo_rpgmaker-v04.py
-│
-├── juegos.db
-│
-├── config.json
-│
-├── fuentes/
-│   └── *.ttf / *.otf
-│
-└── screenshots/
-    ├── main.png
-    ├── gallery.png
-    ├── dark.png
-    └── night.png
-```
-
-| Archivo o carpeta | Descripción |
-|---|---|
-| `catalogo_rpgmaker-v04.py` | Aplicación principal |
-| `juegos.db` | Base de datos de la biblioteca |
-| `config.json` | Preferencias de apariencia |
-| `fuentes/` | Fuentes Nerd Font opcionales |
-| `screenshots/` | Capturas para documentar el proyecto |
-
-La base de datos se crea automáticamente junto al script si todavía no existe.
-
----
-
-## 🗄️ Base de datos
-
-El proyecto utiliza SQLite para almacenar la información localmente.
-
-La tabla principal `juegos` almacena:
-
-| Campo | Descripción |
-|---|---|
-| `id` | Identificador interno |
-| `titulo` | Nombre del juego |
-| `descripcion` | Descripción |
-| `estado` | Progreso del juego |
-| `idioma` | Idioma disponible |
-| `imagen` | Portada almacenada como BLOB |
-| `ruta` | Ubicación de la carpeta del juego |
-| `codigo` | Código identificador |
-| `pagina` | Fuente o página de procedencia |
-| `tipo` | Categoría del juego |
-| `puntuacion` | Valoración de 0 a 5 |
-
-También utiliza las tablas `tags` y `juego_tags` para gestionar etiquetas personalizadas y sus relaciones con los juegos.
-
-**Importante:** realiza copias de seguridad periódicas de `juegos.db`. Esta base contiene los registros y las imágenes de tu biblioteca.
-
----
-
-## 🔤 Nerd Fonts (opcional)
-
-La aplicación puede utilizar Nerd Fonts para mostrar iconos en los controles de la interfaz.
-
-Puedes descargar fuentes compatibles desde:
-
-[https://www.nerdfonts.com](https://www.nerdfonts.com)
-
-También puedes colocar archivos `.ttf` o `.otf` en la carpeta `fuentes/`, situada junto al script. La aplicación intenta cargarlos automáticamente.
-
-Si no tienes ninguna Nerd Font instalada, se utilizará la fuente predeterminada del sistema.
-
----
-
-## 💾 Copias de seguridad y datos
-
-La biblioteca se almacena localmente en `juegos.db`, por lo que puedes respaldarla copiando ese archivo.
-
-Para migrar tu colección a otro equipo:
-
-1. Cierra la aplicación.
-2. Copia `juegos.db` a una ubicación segura.
-3. Copia también `config.json` si deseas conservar tus preferencias.
-4. Copia la carpeta `fuentes/` si utilizas fuentes personalizadas.
-5. Coloca los archivos junto al script en el nuevo equipo.
-
-**Recomendación:** no subas tu `juegos.db` personal al repositorio público. Puede contener información privada sobre tu colección y todas las portadas almacenadas.
-
----
-
-## 🗺️ Plataformas
-
-El proyecto está desarrollado con Python y Tkinter, y contempla la ejecución en:
-
-- Windows
-- Linux
-- macOS (con las dependencias correspondientes)
-
-La apertura de carpetas utiliza el explorador de archivos del sistema operativo.
-
----
+El proyecto está desarrollado en Python y utiliza tecnologías multiplataforma, con el objetivo de funcionar en Windows y Linux.
 
 ## 🚧 Desarrollo
 
-RPG Maker Library es un proyecto en evolución. Su objetivo es ofrecer una herramienta cómoda para mantener organizada una colección personal de juegos, con especial atención a la búsqueda, clasificación y presentación visual.
-
-Las futuras mejoras pueden ampliar las opciones de importación, organización y consulta de la biblioteca.
-
----
+Este proyecto está en desarrollo. Se irán incorporando mejoras y nuevas funcionalidades para facilitar la administración de colecciones grandes de juegos.
 
 ## 📄 Licencia
 
-Este proyecto se distribuye bajo la licencia que se indique en el archivo `LICENSE` del repositorio.
-
-Si deseas reutilizar, modificar o redistribuir el código, consulta los términos de dicha licencia.
-
----
-
-**Desarrollado con Python 🐍 · SQLite · Tkinter**
-
-*Una biblioteca, todos tus juegos, organizados a tu manera.*
+Consulta el archivo `LICENSE` para conocer los términos de uso y distribución del proyecto.
