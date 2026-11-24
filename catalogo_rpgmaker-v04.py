@@ -37,6 +37,7 @@ try:
     from PIL import Image, ImageDraw, ImageOps, ImageTk
 except ImportError:
     _r = tk.Tk()
+    _r.iconbitmap("VisorRPG.ico")
     _r.withdraw()
     messagebox.showerror("Falta Pillow", "Necesitas instalar Pillow:\n\n    pip install pillow")
     sys.exit(1)
