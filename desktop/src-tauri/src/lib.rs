@@ -2,8 +2,10 @@ pub mod backup;
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod images;
 pub mod migrate;
 pub mod models;
+pub mod protocol;
 pub mod repo;
 pub mod search;
 pub mod settings;
@@ -20,11 +22,16 @@ pub fn app_builder<R: tauri::Runtime>(
 ) -> tauri::Builder<R> {
     builder
         .manage(state)
+        .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
+            protocol::handle(ctx.app_handle().clone(), request, responder)
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_library_info,
             commands::search_games,
             commands::get_game,
             commands::get_cover,
+            commands::set_cover,
+            commands::remove_cover,
             commands::suggest_game,
             commands::check_data_version,
             commands::get_vocabulary,

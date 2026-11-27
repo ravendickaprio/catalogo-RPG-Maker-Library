@@ -264,6 +264,48 @@ pub fn update_game(
     })
 }
 
+fn store_cover(
+    conn: &Connection,
+    id: i64,
+    blob: Option<&[u8]>,
+    opts: &WriteOptions,
+) -> Result<GameDetail, AppError> {
+    if id <= 0 {
+        return Err(invalid("id debe ser > 0.".into()));
+    }
+    let expected = require_revision(opts)?;
+    in_tx(conn, || {
+        check_revision(conn, id, expected)?;
+        conn.execute(
+            "UPDATE juegos SET imagen = ? WHERE id = ?",
+            params![blob, id],
+        )?;
+        repo::get_game(conn, id)
+    })
+}
+
+/// Stores an already processed cover (see `images::process_cover`). Touches only `imagen`.
+pub fn set_cover(
+    conn: &Connection,
+    id: i64,
+    webp: &[u8],
+    opts: &WriteOptions,
+) -> Result<GameDetail, AppError> {
+    if webp.is_empty() {
+        return Err(invalid("La portada está vacía.".into()));
+    }
+    store_cover(conn, id, Some(webp), opts)
+}
+
+/// Sets `imagen` to NULL (what the legacy app does for a game without cover).
+pub fn remove_cover(
+    conn: &Connection,
+    id: i64,
+    opts: &WriteOptions,
+) -> Result<GameDetail, AppError> {
+    store_cover(conn, id, None, opts)
+}
+
 pub fn delete_game(conn: &Connection, id: i64, opts: &WriteOptions) -> Result<(), AppError> {
     if id <= 0 {
         return Err(invalid("id debe ser > 0.".into()));

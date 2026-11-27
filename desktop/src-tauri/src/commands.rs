@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::models::*;
 use crate::settings::Settings;
-use crate::{backup, db, migrate, repo, write};
+use crate::{backup, db, images, migrate, repo, write};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -114,7 +114,7 @@ impl Ready {
         }
     }
 
-    fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
+    pub fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
         self.conn
             .lock()
             .map_err(|_| AppError::Database("Conexión no disponible (lock envenenado).".into()))
@@ -352,6 +352,56 @@ pub async fn get_game(state: State<'_, AppState>, id: i64) -> Result<GameDetail,
 #[tauri::command]
 pub async fn get_cover(state: State<'_, AppState>, id: i64) -> Result<Option<Cover>, AppError> {
     run_blocking(&state, move |c, _| repo::get_cover(c, id)).await
+}
+
+fn header_str<'a>(h: &'a tauri::http::HeaderMap, name: &str) -> Option<&'a str> {
+    h.get(name).and_then(|v| v.to_str().ok())
+}
+
+/// Replaces the cover. Raw image bytes in the IPC body (no base64); headers `x-game-id` and
+/// `x-expected-revision`. Processing (decode, resize, WebP) runs outside the DB lock.
+#[tauri::command]
+pub async fn set_cover(
+    state: State<'_, AppState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<GameDetail, AppError> {
+    let ready = state.ready()?;
+    ready.ensure_writable()?;
+    let id: i64 = header_str(request.headers(), "x-game-id")
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|id| *id > 0)
+        .ok_or_else(|| AppError::InvalidInput("Falta la cabecera x-game-id válida.".into()))?;
+    let revision = header_str(request.headers(), "x-expected-revision")
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| AppError::InvalidInput("Falta la cabecera x-expected-revision.".into()))?
+        .to_string();
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b.clone(),
+        _ => {
+            return Err(AppError::InvalidInput(
+                "La portada debe enviarse como bytes en bruto.".into(),
+            ))
+        }
+    };
+    let opts = WriteOptions {
+        allow_duplicate_code: false,
+        expected_revision: Some(revision),
+    };
+    let webp = tauri::async_runtime::spawn_blocking(move || images::process_cover(&bytes))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))??;
+    run_write(&state, move |c| write::set_cover(c, id, &webp, &opts)).await
+}
+
+#[tauri::command]
+pub async fn remove_cover(
+    state: State<'_, AppState>,
+    id: i64,
+    opts: Option<WriteOptions>,
+) -> Result<GameDetail, AppError> {
+    let opts = opts.unwrap_or_default();
+    run_write(&state, move |c| write::remove_cover(c, id, &opts)).await
 }
 
 #[tauri::command]

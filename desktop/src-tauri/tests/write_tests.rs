@@ -318,11 +318,14 @@ fn revision_is_deterministic_and_field_sensitive() {
     assert_ne!(r0, r2);
     c.execute("UPDATE juegos SET imagen = X'0103' WHERE id=3", [])
         .unwrap();
-    assert_eq!(
+    assert_ne!(
         r2,
         repo::get_game(&c, 3).unwrap().revision,
-        "same length -> same fingerprint"
+        "same length, different tail -> different fingerprint (Phase 5)"
     );
+    c.execute("UPDATE juegos SET imagen = X'0102' WHERE id=3", [])
+        .unwrap();
+    assert_eq!(r2, repo::get_game(&c, 3).unwrap().revision);
     // tags participate
     c.execute("INSERT INTO juego_tags(juego_id,tag_id) VALUES (3,1)", [])
         .unwrap();
@@ -730,4 +733,121 @@ fn interop_on_dev_copy() {
     if let Ok(out) = std::env::var("RPGLIB_INTEROP_OUT") {
         std::fs::copy(&p, out).unwrap();
     }
+}
+
+// ---------------------------------------------------------------- Fase 5 (portadas)
+
+fn webp_of(w: u32, h: u32) -> Vec<u8> {
+    let img = image::RgbImage::from_fn(w, h, |x, y| {
+        image::Rgb([(x * 3 % 256) as u8, (y * 5 % 256) as u8, 40])
+    });
+    let mut c = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut c, image::ImageFormat::Png)
+        .unwrap();
+    rpg_library_lib::images::process_cover(&c.into_inner()).unwrap()
+}
+
+#[test]
+fn set_and_remove_cover_with_backup_and_consistency() {
+    let d = TempDir::new().unwrap();
+    let p = make_db(&d);
+    let ready = Ready::open(&p, false).unwrap();
+    assert!(backups(&d).is_empty());
+    let cur = repo::get_game(&rw(&p), 2).unwrap();
+    assert!(!cur.summary.has_cover);
+    let webp = webp_of(900, 600);
+    let g = ready
+        .with_write(|c| write::set_cover(c, 2, &webp, &opts(&cur.revision)))
+        .unwrap();
+    assert!(g.summary.has_cover);
+    assert_ne!(g.revision, cur.revision);
+    assert_eq!(
+        backups(&d).len(),
+        1,
+        "session backup made before the first write"
+    );
+
+    let c = rw(&p);
+    let blob: Vec<u8> = c
+        .query_row("SELECT imagen FROM juegos WHERE id=2", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(blob, webp);
+    assert_eq!(&blob[0..4], b"RIFF");
+    let dec = image::load_from_memory_with_format(&blob, image::ImageFormat::WebP).unwrap();
+    assert_eq!((dec.width(), dec.height()), (300, 200));
+    // text fields and tags untouched; search and FTS in sync
+    assert_eq!(g.summary.titulo, "Alpha Tale");
+    assert_eq!(search(&c, "alpha"), vec!["Alpha Tale"]);
+    assert_consistent(&c);
+
+    // remove
+    let g2 = ready
+        .with_write(|c| write::remove_cover(c, 2, &opts(&g.revision)))
+        .unwrap();
+    assert!(!g2.summary.has_cover);
+    assert_ne!(g2.revision, g.revision);
+    assert_eq!(
+        count(
+            &c,
+            "SELECT count(*) FROM juegos WHERE id=2 AND imagen IS NULL"
+        ),
+        1
+    );
+    assert_eq!(backups(&d).len(), 1);
+    assert_consistent(&c);
+}
+
+#[test]
+fn cover_revision_detects_same_length_replacement() {
+    let d = TempDir::new().unwrap();
+    let p = make_db(&d);
+    let c = rw(&p);
+    let a = X_BLOB.to_vec();
+    let mut b = a.clone();
+    let last = b.len() - 1;
+    b[last] ^= 0xFF; // same length, different tail
+    let r0 = repo::get_game(&c, 1).unwrap().revision;
+    c.execute("UPDATE juegos SET imagen=? WHERE id=1", [&a])
+        .unwrap();
+    let ra = repo::get_game(&c, 1).unwrap().revision;
+    c.execute("UPDATE juegos SET imagen=? WHERE id=1", [&b])
+        .unwrap();
+    let rb = repo::get_game(&c, 1).unwrap().revision;
+    assert_ne!(ra, rb);
+    assert_ne!(r0, rb);
+}
+const X_BLOB: [u8; 40] = [7u8; 40];
+
+#[test]
+fn cover_conflict_and_readonly() {
+    let d = TempDir::new().unwrap();
+    let p = make_db(&d);
+    let ready = Ready::open(&p, false).unwrap();
+    let webp = webp_of(50, 50);
+    let before: Vec<u8> = rw(&p)
+        .query_row("SELECT imagen FROM juegos WHERE id=1", [], |r| r.get(0))
+        .unwrap();
+    let e = ready
+        .with_write(|c| write::set_cover(c, 1, &webp, &opts("stale")))
+        .unwrap_err();
+    assert!(matches!(e, AppError::Conflict(_)));
+    let e = ready
+        .with_write(|c| write::remove_cover(c, 1, &WriteOptions::default()))
+        .unwrap_err();
+    assert!(matches!(e, AppError::InvalidInput(_)));
+    let e = ready
+        .with_write(|c| write::set_cover(c, 99, &webp, &opts("x")))
+        .unwrap_err();
+    assert!(matches!(e, AppError::NotFound(_)));
+    let after: Vec<u8> = rw(&p)
+        .query_row("SELECT imagen FROM juegos WHERE id=1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(before, after);
+
+    let ro = Ready::open(&p, true).unwrap();
+    let e = ro
+        .with_write(|c| write::set_cover(c, 1, &webp, &opts("x")))
+        .unwrap_err();
+    assert!(matches!(e, AppError::ReadOnly(_)));
 }

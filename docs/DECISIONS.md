@@ -105,3 +105,57 @@ Formato: contexto → decisión → consecuencias. Fecha de referencia: 2026-11-
   - orden por título: 60,8 → 2,9 ms;
   - página profunda: 79,8 → 3,1 ms.
 - Ningún escenario empeora más allá del ruido. Con esto se cierra la decisión diferida en el ADR-011.
+
+## ADR-014 — Portadas (Fase 5)
+**Hechos.** El legacy (`comprimir_imagen`, v04 L318-336) reduce a un máximo de 300×300, aplana el alfa sobre blanco y guarda WebP calidad 65, con JPEG como alternativa. Las 249 portadas actuales son WebP de 3–28 KB.
+**Decisión.**
+- **Mismo formato que el legacy:** WebP con pérdida, q = 65, máximo 300×300 conservando la proporción y alfa aplanado sobre blanco. Crates: `image` (decodificación de JPEG, PNG, WebP, GIF y BMP en Rust puro, con límites de dimensiones y memoria) y `webp` (bindings de libwebp para codificar con pérdida). Así ambas apps producen portadas equivalentes y la DB no crece.
+- **Entrega al frontend:** protocolo propio `cover` (`http://cover.localhost/<id>?r=<revision>` en Windows y `cover://localhost/<id>?r=…` en Linux) con `Cache-Control: max-age=31536000, immutable`. La revisión invalida la caché. `get_cover` en base64 se mantiene por compatibilidad. La CSP añade ese origen a `img-src`.
+- **Entrada:** bytes en bruto por IPC (`InvokeBody::Raw`, sin base64), con un límite de 20 MB y validación por magic bytes. Se aceptan desde selector de archivo, arrastrar y soltar (`dragDropEnabled: false` en la ventana para recibir el evento HTML5) o pegar desde el portapapeles. Sin plugins.
+- El procesamiento se hace en `spawn_blocking`. La escritura reutiliza revisión, backup de sesión y `BEGIN IMMEDIATE` (ADR-012).
+
+## ADR-015 — Importador integrado (Fase 6)
+**Contexto.** El importador Python (`Importar_Juegos_RPG_Maker_v2.py`) tiene bugs verificados en la auditoría:
+- desfase de offsets al quitar corchetes antes del código, que produjo los 906 títulos `RY …`;
+- `F`/`P` sueltas en cualquier posición se toman como estado;
+- " en " de un título en español se toma como inglés;
+- un `_` corta el código (`RY-d_642996` → `RY-D`);
+- la deduplicación no normaliza el código.
+
+**Decisión.**
+- **Parser nuevo en Rust (`importer::parse_name`), con estas reglas:**
+  - El código se elimina del texto **antes** de quitar los corchetes; los offsets se calculan siempre sobre la cadena vigente.
+  - Estado: `[F]`/`[P]` entre corchetes en cualquier posición, o `F`/`P` solo si son el **primer** token.
+  - Idioma: `EN`/`ES`/`ESP`/`JP`/`JPN` como token delimitado por `_ - . [ ] ( )` o por el final del nombre (sin distinguir mayúsculas), o separado por espacios solo si va **en mayúsculas**. Por defecto, Japonés (como el legacy).
+  - Código: `RY[- _]+([A-Z0-9][A-Z0-9_-]*)`, en mayúsculas y sin `-` ni `_` finales.
+  - Título vacío → el código, y si tampoco hay código, el nombre original (como el legacy).
+- **Validación con datos reales:** sobre la copia, el parser nuevo se aplica al nombre de archivo de cada `ruta` y se compara con el estado y el idioma guardados. Debe igualar o superar al parser legacy (1158/1159 en estado). Los casos de la auditoría se convierten en golden tests, y las diferencias intencionales se documentan.
+- **Detección de candidatos:** archivos `.zip`, `.rar` y `.7z` y carpetas cuyo nombre contenga un código. Se omiten `.git`, `__pycache__`, `.venv` y `node_modules`, y no se siguen enlaces simbólicos. El recorrido se puede cancelar y emite progreso por `tauri::ipc::Channel`.
+- **Duplicados:** se detectan por código normalizado (la misma expresión que `codigo_norm`) y por ruta (`casefold` y separadores unificados), tanto contra la DB como dentro del propio lote.
+- **Vista previa editable:** se puede marcar o desmarcar cada elemento y editar su título, estado e idioma. `pagina` y `tipo` por defecto son configurables; se proponen los valores más frecuentes en la DB.
+- **Importación:** un único `BEGIN IMMEDIATE` con backup de sesión previo. Devuelve el resumen y los ids insertados.
+- **Historial:** se añade al final de `app_data_dir/import-history.jsonl` (fecha, raíz, conteos e ids). "Deshacer última importación" borra esos ids solo si su revisión no cambió desde que se importaron; los demás se omiten y se informa. No requiere cambios de esquema.
+- **Selector de carpeta:** se adopta `tauri-plugin-dialog` con **solo** el permiso `dialog:allow-open` (auditado y mínimo). Es la única forma razonable de obtener una ruta de carpeta en un WebView. También se acepta escribir la ruta como texto.
+- El importador **nunca** mueve, renombra, extrae ni modifica archivos.
+
+## ADR-016 — Centro de mantenimiento (Fase 7)
+**Decisión.**
+- **Detectores (solo lectura, paginados, en el backend):**
+  - sin descripción;
+  - sin portada;
+  - sin tags;
+  - códigos duplicados por `codigo_norm` (p. ej. ids 124/1016);
+  - código vacío;
+  - títulos con el patrón del bug del importador (`^RY\b`);
+  - rutas inexistentes (comprobación de existencia en lotes y cancelable; en Linux, una ruta `X:\` se informa como "ruta de Windows");
+  - estado inconsistente con la marca `[F]`/`[P]` del nombre de archivo;
+  - tags huérfanas;
+  - `juegos_busqueda` o `juegos_fts` desincronizados.
+- **Acciones por lote** con vista previa:
+  - fijar estado, idioma, tipo o página;
+  - añadir o quitar una tag;
+  - para títulos `RY …`, proponer el título que da el parser nuevo a partir del nombre de archivo de la ruta, solo si mejora (no vacío y sin `RY`);
+  - eliminar tags huérfanas;
+  - reconstruir FTS (`INSERT INTO juegos_fts(juegos_fts) VALUES('rebuild')` tras resincronizar `juegos_busqueda` desde `juegos`).
+- **Seguridad de los lotes:** backup de sesión y `BEGIN IMMEDIATE`. Cada lote guarda un registro de deshacer (valores anteriores e ids, con la revisión posterior) en `app_data_dir/undo/<timestamp>.json`. "Deshacer último lote" restaura solo los registros cuya revisión no cambió desde entonces.
+- **Cola de descripciones pendientes:** equivale a `catalogo_rpgmaker-descripciones.py`. Edita uno tras otro con "Guardar y siguiente", usando el `update_game` normal.

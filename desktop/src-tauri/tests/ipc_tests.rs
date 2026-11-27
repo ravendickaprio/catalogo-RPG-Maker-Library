@@ -483,3 +483,160 @@ fn ipc_set_db_path_validates_and_swaps() {
         "other.db"
     );
 }
+
+// ---------------------------------------------------------------- Fase 5 (portadas)
+
+fn invoke_raw(
+    w: &WebviewWindow<MockRuntime>,
+    cmd: &str,
+    body: Vec<u8>,
+    headers: &[(&str, &str)],
+) -> Result<Value, Value> {
+    let mut h = tauri::http::HeaderMap::new();
+    for (k, v) in headers {
+        h.insert(
+            tauri::http::header::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+            tauri::http::HeaderValue::from_str(v).unwrap(),
+        );
+    }
+    tauri::test::get_ipc_response(
+        w,
+        InvokeRequest {
+            cmd: cmd.into(),
+            callback: CallbackFn(0),
+            error: CallbackFn(1),
+            url: "http://tauri.localhost".parse().unwrap(),
+            body: InvokeBody::Raw(body),
+            headers: h,
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+    .map(|b| b.deserialize::<Value>().unwrap())
+}
+
+fn test_png(w: u32, h: u32) -> Vec<u8> {
+    let img = image::RgbImage::from_fn(w, h, |x, y| {
+        image::Rgb([(x % 256) as u8, (y % 256) as u8, 90])
+    });
+    let mut c = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut c, image::ImageFormat::Png)
+        .unwrap();
+    c.into_inner()
+}
+
+#[test]
+fn ipc_set_and_remove_cover() {
+    let dir = TempDir::new().unwrap();
+    let path = fixture_db(&dir);
+    let (_app, w) = setup_rw(&path);
+    // game 2 has no cover
+    let g = invoke(&w, "get_game", json!({ "id": 2 })).unwrap();
+    assert_eq!(g["hasCover"], false);
+    let rev = g["revision"].as_str().unwrap().to_string();
+    let png = test_png(800, 600);
+
+    // missing / malformed headers and JSON body are InvalidInput
+    assert_eq!(
+        invoke_raw(&w, "set_cover", png.clone(), &[]).unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    assert_eq!(
+        invoke_raw(
+            &w,
+            "set_cover",
+            png.clone(),
+            &[("x-game-id", "x"), ("x-expected-revision", &rev)]
+        )
+        .unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    assert_eq!(
+        invoke(&w, "set_cover", json!({ "id": 2 })).unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    // not an image
+    assert_eq!(
+        invoke_raw(
+            &w,
+            "set_cover",
+            b"hello world".to_vec(),
+            &[("x-game-id", "2"), ("x-expected-revision", &rev)]
+        )
+        .unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    // stale revision
+    assert_eq!(
+        invoke_raw(
+            &w,
+            "set_cover",
+            png.clone(),
+            &[("x-game-id", "2"), ("x-expected-revision", "deadbeef")]
+        )
+        .unwrap_err()["kind"],
+        "Conflict"
+    );
+
+    let ok = invoke_raw(
+        &w,
+        "set_cover",
+        png,
+        &[("x-game-id", "2"), ("x-expected-revision", &rev)],
+    )
+    .unwrap();
+    assert_eq!(ok["hasCover"], true);
+    assert_ne!(ok["revision"].as_str().unwrap(), rev);
+    assert!(invoke(&w, "get_session_info", json!({})).unwrap()["lastBackup"].is_string());
+    let cover = invoke(&w, "get_cover", json!({ "id": 2 })).unwrap();
+    assert_eq!(cover["mime"], "image/webp");
+
+    // stale revision after the change
+    assert_eq!(
+        invoke(
+            &w,
+            "remove_cover",
+            json!({ "id": 2, "opts": { "expectedRevision": rev } })
+        )
+        .unwrap_err()["kind"],
+        "Conflict"
+    );
+    assert_eq!(
+        invoke(&w, "remove_cover", json!({ "id": 2, "opts": {} })).unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    let new_rev = ok["revision"].as_str().unwrap();
+    let rm = invoke(
+        &w,
+        "remove_cover",
+        json!({ "id": 2, "opts": { "expectedRevision": new_rev } }),
+    )
+    .unwrap();
+    assert_eq!(rm["hasCover"], false);
+    assert!(invoke(&w, "get_cover", json!({ "id": 2 }))
+        .unwrap()
+        .is_null());
+
+    // read-only
+    invoke(&w, "set_read_only", json!({ "readOnly": true })).unwrap();
+    let rev = rm["revision"].as_str().unwrap();
+    assert_eq!(
+        invoke_raw(
+            &w,
+            "set_cover",
+            test_png(10, 10),
+            &[("x-game-id", "2"), ("x-expected-revision", rev)]
+        )
+        .unwrap_err()["kind"],
+        "ReadOnly"
+    );
+    assert_eq!(
+        invoke(
+            &w,
+            "remove_cover",
+            json!({ "id": 2, "opts": { "expectedRevision": rev } })
+        )
+        .unwrap_err()["kind"],
+        "ReadOnly"
+    );
+}

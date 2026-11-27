@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { suggestGame, normalizeError } from "../api/client";
 import type { AppError, GameDetail, Suggestion } from "../api/types";
-import { useCover } from "../hooks/useCover";
+import CoverImage from "./CoverImage";
 import { RequestSequencer } from "../lib/requestSequencer";
 import { GameFields } from "./GameDetail";
 
@@ -73,7 +73,6 @@ export default function SuggestionDialog({ onClose, onShowInList }: Props) {
   };
 
   const game = result?.game ?? null;
-  const cover = useCover(game ? game.id : null, !!game?.hasCover);
 
   return (
     <div
@@ -106,7 +105,7 @@ export default function SuggestionDialog({ onClose, onShowInList }: Props) {
         {result && game && (
           <div className={"suggest-body" + (loading ? " dim" : "")}>
             <div className="cover-box">
-              {cover.src ? <img src={cover.src} alt={`Portada de ${game.titulo}`} /> : <div className="cover-placeholder">Sin portada</div>}
+              <CoverImage id={game.id} hasCover={game.hasCover} alt={`Portada de ${game.titulo}`} placeholder={() => <div className="cover-placeholder">Sin portada</div>} />
             </div>
             <div className="suggest-info">
               <h3 className="suggest-game-title">{game.titulo}</h3>

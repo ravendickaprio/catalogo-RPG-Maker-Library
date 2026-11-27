@@ -378,13 +378,22 @@ impl Fnv {
     }
 }
 
-/// Fingerprint of the editable record state (contract Phase 4): titulo, descripcion, estado,
-/// idioma, ruta, codigo, pagina, tipo, puntuacion, length(imagen) and tags (NOCASE order).
+/// Cheap fingerprint of the cover BLOB: length plus its first and last 16 bytes (Phase 5), so a
+/// replaced cover of identical size still changes the record revision without reading all of it.
+#[derive(Debug, Default, Clone)]
+pub struct CoverFingerprint {
+    pub len: i64,
+    pub head: Vec<u8>,
+    pub tail: Vec<u8>,
+}
+
+/// Fingerprint of the editable record state (contract Phase 4/5): titulo, descripcion, estado,
+/// idioma, ruta, codigo, pagina, tipo, puntuacion, cover fingerprint and tags (NOCASE order).
 pub fn revision_of(
     s: &GameSummary,
     descripcion: &str,
     ruta: &str,
-    img_len: i64,
+    img: &CoverFingerprint,
     tags: &[String],
 ) -> String {
     let mut h = Fnv::new();
@@ -401,7 +410,9 @@ pub fn revision_of(
         h.field(t.as_bytes());
     }
     h.field(&s.puntuacion.to_bits().to_le_bytes());
-    h.field(&img_len.to_le_bytes());
+    h.field(&img.len.to_le_bytes());
+    h.field(&img.head);
+    h.field(&img.tail);
     h.field(&(tags.len() as u64).to_le_bytes());
     for t in tags {
         h.field(t.as_bytes());
@@ -414,7 +425,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
         return Err(AppError::InvalidInput("id debe ser > 0.".into()));
     }
     let sql = format!(
-        "SELECT {SUMMARY_COLS}, coalesce(j.descripcion,''), coalesce(j.ruta,''),          coalesce(length(j.imagen),0) FROM juegos j WHERE j.id = ?"
+        "SELECT {SUMMARY_COLS}, coalesce(j.descripcion,''), coalesce(j.ruta,''),          coalesce(length(j.imagen),0),          CAST(coalesce(substr(j.imagen,1,16),x'') AS BLOB), CAST(coalesce(substr(j.imagen,-16),x'') AS BLOB)          FROM juegos j WHERE j.id = ?"
     );
     let row = conn
         .query_row(&sql, [id], |r| {
@@ -422,11 +433,15 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
                 summary_from_row(r)?,
                 r.get::<_, String>(9)?,
                 r.get::<_, String>(10)?,
-                r.get::<_, i64>(11)?,
+                CoverFingerprint {
+                    len: r.get::<_, i64>(11)?,
+                    head: r.get::<_, Vec<u8>>(12)?,
+                    tail: r.get::<_, Vec<u8>>(13)?,
+                },
             ))
         })
         .optional()?;
-    let (summary, descripcion, ruta, img_len) =
+    let (summary, descripcion, ruta, img) =
         row.ok_or_else(|| AppError::NotFound(format!("No existe el juego con id {id}.")))?;
     let mut st = conn.prepare(
         "SELECT t.nombre FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id          WHERE jt.juego_id = ? ORDER BY t.nombre COLLATE NOCASE",
@@ -434,7 +449,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
     let tags = st
         .query_map([id], |r| r.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
-    let revision = revision_of(&summary, &descripcion, &ruta, img_len, &tags);
+    let revision = revision_of(&summary, &descripcion, &ruta, &img, &tags);
     Ok(GameDetail {
         summary,
         descripcion,
@@ -444,7 +459,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
     })
 }
 
-fn mime_of(b: &[u8]) -> &'static str {
+pub fn mime_of(b: &[u8]) -> &'static str {
     if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
         "image/webp"
     } else if b.starts_with(&[0x89, b'P', b'N', b'G']) {

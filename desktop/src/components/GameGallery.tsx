@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { GameSummary } from "../api/types";
-import { useCover } from "../hooks/useCover";
+import CoverImage from "./CoverImage";
 import { estadoClass } from "../lib/estado";
 import { CARD_INFO_H, computeGridLayout, GRID_GAP, GRID_PAD, moveInGrid } from "../lib/gridLayout";
 import StatusLine from "./StatusLine";
@@ -26,8 +26,6 @@ function Card({ game, width, selected, onSelect, onOpen }: {
   onSelect: () => void;
   onOpen: () => void;
 }) {
-  // Rendered only for virtual-visible rows, so covers are fetched lazily and only if present.
-  const cover = useCover(game.id, game.hasCover);
   const coverH = Math.round((width * 4) / 3);
   return (
     <div
@@ -40,13 +38,16 @@ function Card({ game, width, selected, onSelect, onOpen }: {
       onDoubleClick={onOpen}
     >
       <div className="card-cover" style={{ height: coverH }}>
-        {cover.src ? (
-          <img src={cover.src} alt="" draggable={false} />
-        ) : (
-          <span className="card-ph" aria-hidden="true">
-            {cover.loading ? "…" : game.hasCover ? "" : "Sin portada"}
-          </span>
-        )}
+        <CoverImage
+          id={game.id}
+          hasCover={game.hasCover}
+          alt=""
+          placeholder={(failed) => (
+            <span className="card-ph" aria-hidden="true">
+              {game.hasCover && !failed ? "" : "Sin portada"}
+            </span>
+          )}
+        />
       </div>
       <div className="card-info">
         <span className="card-title" title={game.titulo}>

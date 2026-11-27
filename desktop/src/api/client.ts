@@ -32,6 +32,14 @@ export function normalizeError(e: unknown): AppError {
   return { kind: "Database", message };
 }
 
+async function callRaw<T>(cmd: string, body: Uint8Array, headers: Record<string, string>): Promise<T> {
+  try {
+    return await invoke<T>(cmd, body, { headers });
+  } catch (e) {
+    throw normalizeError(e);
+  }
+}
+
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
@@ -44,6 +52,11 @@ export const getLibraryInfo = () => call<LibraryInfo>("get_library_info");
 export const searchGames = (req: SearchRequest) => call<SearchPage>("search_games", { req });
 export const getGame = (id: number) => call<GameDetail>("get_game", { id });
 export const getCover = (id: number) => call<Cover | null>("get_cover", { id });
+/** Raw bytes (no base64); the backend decodes, resizes to 300x300 WebP and stores it (ADR-014). */
+export const setCover = (id: number, bytes: Uint8Array, expectedRevision: string) =>
+  callRaw<GameDetail>("set_cover", bytes, { "x-game-id": String(id), "x-expected-revision": expectedRevision });
+export const removeCover = (id: number, expectedRevision: string) =>
+  call<GameDetail>("remove_cover", { id, opts: { expectedRevision } });
 export const suggestGame = (req: SuggestRequest) => call<Suggestion>("suggest_game", { req });
 export const checkDataVersion = () => call<DataVersion>("check_data_version");
 

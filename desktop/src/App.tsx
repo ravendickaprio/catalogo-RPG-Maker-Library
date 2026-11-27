@@ -13,7 +13,7 @@ import SuggestionDialog from "./components/SuggestionDialog";
 import { useExternalRefresh } from "./hooks/useExternalRefresh";
 import { useGameSearch } from "./hooks/useGameSearch";
 import { useTheme } from "./hooks/useTheme";
-import { clearCoverCache, invalidateCover } from "./lib/coverCache";
+import { clearCoverCache, invalidateCover } from "./lib/cover";
 import type { PaletteAction } from "./lib/palette";
 import { PREF_SIDEBAR, PREF_VIEW, writePref } from "./lib/storage";
 import { THEMES, type Theme } from "./lib/theme";
@@ -389,6 +389,11 @@ export default function App() {
             }}
             onDirtyChange={onDirtyChange}
             onSaved={onSaved}
+            onCoverChanged={(g) => {
+              invalidateCover(g.id);
+              afterWrite(g.id);
+              setToast(g.hasCover ? "Portada guardada" : "Portada quitada");
+            }}
             onDeleted={onDeleted}
             onCancelCreate={() => setCreating(false)}
             onToast={setToast}

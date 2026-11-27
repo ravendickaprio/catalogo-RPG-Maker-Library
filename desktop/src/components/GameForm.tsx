@@ -10,7 +10,9 @@ import {
   type FieldKey,
   type FormValues,
 } from "../lib/gameInput";
+import type { AppError } from "../api/types";
 import ConfirmDialog from "./ConfirmDialog";
+import CoverEditor from "./CoverEditor";
 import TagEditor from "./TagEditor";
 
 interface Props {
@@ -22,9 +24,12 @@ interface Props {
   onSubmit: (input: GameInput) => void;
   onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Cover changes are saved immediately; the parent receives the updated record (new revision). */
+  onCoverChanged?: (g: GameDetail) => void;
+  onCoverError?: (e: AppError) => void;
 }
 
-export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit, onCancel, onDirtyChange }: Props) {
+export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit, onCancel, onDirtyChange, onCoverChanged, onCoverError }: Props) {
   const initial = useMemo(() => (game ? valuesFromGame(game) : defaultValues(vocab)), [game]); // eslint-disable-line react-hooks/exhaustive-deps
   const [values, setValues] = useState<FormValues>(initial);
   const [submitted, setSubmitted] = useState(false);
@@ -169,6 +174,11 @@ export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit
         />
         {msg("tags")}
       </div>
+      {game ? (
+        <CoverEditor game={game} onChanged={(g) => onCoverChanged?.(g)} onError={(e) => onCoverError?.(e)} />
+      ) : (
+        <p className="note">Podrás añadir la portada después de crear el juego.</p>
+      )}
       <div className="dialog-actions">
         <button type="button" onClick={cancel} disabled={saving} title="Cancelar (Esc)">
           Cancelar

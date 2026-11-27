@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useState } from "react";
 import { createGame, deleteGame, getGame, normalizeError, updateGame } from "../api/client";
 import type { AppError, GameDetail as Detail, GameInput, Vocabulary } from "../api/types";
-import { useCover } from "../hooks/useCover";
+import CoverImage from "./CoverImage";
 import { estadoClass } from "../lib/estado";
 import ConfirmDialog from "./ConfirmDialog";
 import GameForm from "./GameForm";
@@ -26,6 +26,8 @@ interface Props {
   onMissing?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSaved?: (game: Detail, created: boolean) => void;
+  /** The cover was replaced/removed (saved immediately, independent of the text fields). */
+  onCoverChanged?: (game: Detail) => void;
   onDeleted?: (id: number) => void;
   onCancelCreate?: () => void;
   onToast?: (msg: string) => void;
@@ -43,6 +45,7 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
     onMissing,
     onDirtyChange,
     onSaved,
+    onCoverChanged,
     onDeleted,
     onCancelCreate,
     onToast,
@@ -115,7 +118,6 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
   }, [reloadToken]);
 
   const shown = game && game.id === id ? game : null;
-  const cover = useCover(shown ? shown.id : null, !!shown?.hasCover);
   const canWrite = !readOnly;
 
   const startEdit = useCallback(() => {
@@ -230,6 +232,11 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
           vocab={vocab}
           tagSuggestions={tagSuggestions}
           saving={saving}
+          onCoverChanged={(g) => {
+            setGame(g);
+            onCoverChanged?.(g);
+          }}
+          onCoverError={(e) => handleError(e)}
           onSubmit={(input) => void save(input)}
           onDirtyChange={onDirtyChange}
           onCancel={() => {
@@ -243,7 +250,7 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
       {!showForm && shown && !loading && (
         <>
           <div className="cover-box">
-            {cover.src ? <img src={cover.src} alt={`Portada de ${shown.titulo}`} /> : <div className="cover-placeholder">{cover.loading ? "Cargando portada…" : "Sin portada"}</div>}
+            <CoverImage id={shown.id} hasCover={shown.hasCover} alt={`Portada de ${shown.titulo}`} placeholder={() => <div className="cover-placeholder">Sin portada</div>} />
           </div>
           <h2>{shown.titulo}</h2>
           <div className="dialog-actions detail-actions">

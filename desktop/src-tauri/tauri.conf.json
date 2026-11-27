@@ -12,10 +12,10 @@
   "app": {
     "withGlobalTauri": false,
     "windows": [
-      { "title": "RPG Maker Library (prototipo)", "width": 1280, "height": 800, "minWidth": 800, "minHeight": 500 }
+      { "title": "RPG Maker Library (prototipo)", "width": 1280, "height": 800, "minWidth": 800, "minHeight": 500, "dragDropEnabled": false }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; img-src 'self' data: cover: http://cover.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost",
       "freezePrototype": true
     }
   },

@@ -135,8 +135,26 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - No se probaron en la ventana real los flujos de conflicto ni de "base ocupada" (sí están cubiertos por tests de integración).
 - No verificado en Linux.
 
-## Fase 5 — Imágenes (plan propuesto)
-1. Protocolo de portadas `cover://` (o `asset`) con respuesta binaria y cabeceras de caché, en lugar de base64 por IPC.
-2. Cambiar o quitar la portada: un `<input type=file>` en el frontend envía los bytes al backend, que valida el tipo (magic) y el tamaño (≤ 20 MB) y genera una miniatura de 300×300. El formato (WebP lossy, como el legacy, mediante un crate de libwebp, o JPEG) se decidirá con un ADR. Se usa el mismo flujo de revisión y backup. Sin plugins.
-3. Decodificación y redimensionado en `spawn_blocking`, con límite de memoria.
-4. Pruebas con imágenes sintéticas. No se usan portadas con copyright en el repositorio.
+## Fase 5 — Imágenes ✅ (2026-11-27)
+
+**Implementación** (subagente Sonnet, full-stack; diseño en el ADR-014):
+- `images::process_cover`: magic bytes, límites de decodificación, alfa aplanado sobre blanco, máximo 300×300 con Lanczos3 y WebP q65 (libwebp), igual que el legacy.
+- Comandos `set_cover` (bytes en bruto por IPC más cabeceras de id y revisión) y `remove_cover`, sobre el mismo camino de escritura segura.
+- Protocolo `cover` con caché inmutable e invalidación por etiqueta; ya no se usa base64 en la UI.
+- Editor de portada: selector de archivo, arrastrar y soltar, pegar y quitar.
+- La revisión incluye ahora una huella de la portada (longitud y primeros/últimos 16 bytes).
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | 31 + 7 IPC + 26 + 21: **85 ok** (1 bench ignorado) |
+| clippy, fmt, `npm test` (61), typecheck, `tauri build` | ok |
+| App real (copia desechable) | La galería carga las portadas por `cover://` bajo la CSP. Pegar una imagen de 600×800 desde el portapapeles guarda la portada al instante y la tarjeta se refresca. En la DB queda `RIFF…WEBPVP8 `, 225×300, 1522 bytes; backup previo creado; `integrity_check` ok |
+| Tiempos de `process_cover` (release, imágenes sintéticas) | JPEG 2000×1000 → 44,9 ms; PNG 4000×3000 → 165,8 ms |
+
+### Pendientes
+- Arrastrar y soltar y el selector de archivo nativo no se probaron en la ventana real (sí con tests).
+- Un GIF animado conserva solo el primer fotograma.
+- `get_cover` queda sin uso en la UI.
+
+## Fase 6 — Importador (en curso, ADR-015)

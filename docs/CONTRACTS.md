@@ -167,3 +167,26 @@ Nuevos `AppError.kind`: `"Conflict" | "DuplicateCode" | "ReadOnly" | "Busy"`. `D
 - `opts` es opcional en create. En update y delete, `expectedRevision` es obligatorio (`InvalidInput` si falta).
 - Las tags se deduplican sin distinguir mayúsculas en ASCII, con la misma regla que `NOCASE`. Se rechazan caracteres NUL.
 - `LibraryInfo.readOnly` refleja el modo real.
+
+## Fase 5 — Portadas (ADR-014)
+
+### Comandos nuevos
+| Comando | Entrada | Retorno | Notas |
+|---|---|---|---|
+| `set_cover` | **Cuerpo en bruto** (`InvokeBody::Raw`, bytes de la imagen) + cabeceras `x-game-id` y `x-expected-revision` | `GameDetail` | `invoke('set_cover', uint8array, { headers })`. Un JSON como cuerpo, una cabecera ausente o no válida, o una imagen no soportada dan `InvalidInput`; otra revisión → `Conflict`; solo lectura → `ReadOnly`; juego inexistente → `NotFound` |
+| `remove_cover` | `{ id, opts: { expectedRevision } }` | `GameDetail` | Deja `imagen = NULL`, igual que el legacy para un juego sin portada |
+| `get_cover` | `{ id }` | `Cover \| null` | Se mantiene por compatibilidad (base64). El frontend ya no lo usa |
+
+- **Procesamiento** (`images::process_cover`, en `spawn_blocking` y fuera del bloqueo de la DB): máximo 20 MiB; el formato se detecta por magic bytes (JPEG, PNG, WebP, GIF, BMP; otro → `InvalidInput "Formato no soportado"`); límites de decodificación de 12000x12000 y 512 MiB; el alfa se aplana sobre blanco; se reduce con Lanczos3 a un máximo de 300x300 conservando la proporción (nunca se amplía); se codifica WebP con pérdida q=65, method=6 (como `comprimir_imagen` del legacy). GIF animado: solo el primer fotograma.
+- **Escritura:** misma ruta que Fase 4 (backup de sesión antes de la primera escritura, `BEGIN IMMEDIATE`, comprobación de revisión, solo se toca `imagen`). Los triggers de FTS no cambian.
+- **`revision`:** ahora usa la huella de la portada `length(imagen)` + primeros 16 + últimos 16 bytes del BLOB (antes solo la longitud), para que reemplazar una portada por otra del mismo tamaño también cambie la revisión. El valor de `revision` de un registro con portada cambia respecto a Fase 4; es un token opaco y nada lo persiste.
+
+### Protocolo `cover`
+- URL: `http://cover.localhost/<id>?r=<tag>` en Windows, `cover://localhost/<id>?r=<tag>` en Linux/macOS. El frontend decide por `navigator.userAgent`. `r` solo sirve para invalidar la caché del webview; el servidor lo ignora.
+- Solo `GET` (otro método → 405). Respuestas: `200` con el BLOB, `Content-Type` por magic bytes, `Cache-Control: public, max-age=31536000, immutable` y `X-Content-Type-Options: nosniff`; `404` si el juego no existe o no tiene portada; `400` si el id no es un entero positivo; `503` si la DB no está lista; `500` ante un error de lectura.
+- La lectura se hace en `spawn_blocking` con la conexión de la app. No se carga nada más que la fila pedida.
+- CSP: `img-src 'self' data: cover: http://cover.localhost`. Ventana con `dragDropEnabled: false` para recibir los eventos HTML5 de arrastrar y soltar.
+
+### Frontend
+- `coverUrl(id, tag)` y un contador por id (`invalidateCover`) más una época global (`clearCoverCache`) forman la etiqueta `r`. Se invalida tras `set_cover`/`remove_cover`, un refresco externo, cambio de DB y migraciones. El LRU base64 se retiró; el webview gestiona la memoria de las imágenes (`loading="lazy"`, `decoding="async"`).
+- Edición: selector de archivo, arrastrar y soltar, y pegar (Ctrl+V con una imagen en el portapapeles mientras el formulario de edición está abierto). La portada se guarda al instante, independiente de «Guardar». En «Nuevo juego» la sección aparece tras crear el juego.
