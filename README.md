@@ -120,5 +120,11 @@ python catalogo_rpgmaker-descripciones.py
 - Permite escribir y guardar la descripción individualmente.
 - Al guardar, el juego se retira de la tanda y deja de aparecer en futuras selecciones pendientes.
 - Crea una copia de seguridad de `juegos.db` antes del primer cambio (`juegos.db.backup-before-description-edit`).
+- Incluye navegación anterior, omitir, guardar y guardar/siguiente.
 - No altera otros campos ni elimina registros.
 - Usa el `juegos.db` ubicado junto al script.
+
+
+## Archivos de base de datos y Git
+
+El archivo `.gitignore` excluye bases de datos locales (`.db`, `.sqlite`, `.sqlite3` y archivos auxiliares de estas extensiones) para evitar que bases de datos de trabajo se agreguen o se actualicen accidentalmente en Git.
