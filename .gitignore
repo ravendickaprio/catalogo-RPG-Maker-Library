@@ -13,3 +13,4 @@ config.json
 
 # Backups automáticos de la app de escritorio
 backups/
+imgs/
