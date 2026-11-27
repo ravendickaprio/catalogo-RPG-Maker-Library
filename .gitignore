@@ -1,0 +1,6 @@
+# Bases de datos locales: no versionarlas
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
