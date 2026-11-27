@@ -1,165 +1,131 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Herramienta independiente para completar descripciones pendientes en juegos.db."""
-import os
-import random
-import sqlite3
-import shutil
-import tkinter as tk
+"""Editor por tandas para completar descripciones en la biblioteca RPG Maker."""
+import os, random, sqlite3, tkinter as tk
 from tkinter import messagebox, ttk
 
 LIMIT = 20
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "juegos.db")
+BACKUP_PATH = DB_PATH + ".backup-before-description-edit"
 
 
-def open_db(path):
+def connect(path):
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys=ON")
-    cols = {r[1] for r in con.execute("PRAGMA table_info(juegos)")}
+    cols = {c[1] for c in con.execute("PRAGMA table_info(juegos)")}
     if not {"id", "titulo", "descripcion"} <= cols:
         con.close()
-        raise RuntimeError("La base de datos no contiene la tabla juegos esperada.")
+        raise RuntimeError("No se encontró una tabla juegos compatible.")
     return con
 
 
-class DescriptionBatchApp:
+class App:
     def __init__(self, root):
-        self.root = root
-        root.title("RPG Maker Library - Completar descripciones")
-        root.geometry("980x650")
-        root.minsize(760, 480)
-        self.con = open_db(DB_PATH)
-        self.items = []
-        self.current = None
-        self.backup_done = False
-        self._ui()
-        self.load_batch()
-        root.protocol("WM_DELETE_WINDOW", self.close)
+        self.root=root; root.title("RPG Maker Library · Descripciones"); root.geometry("1000x680"); root.minsize(800,520)
+        self.db=connect(DB_PATH); self.rows=[]; self.current=None; self.dirty=False
+        self._ui(); self.batch(); root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _ui(self):
-        outer = ttk.Frame(self.root, padding=12)
-        outer.pack(fill="both", expand=True)
-        ttk.Label(outer, text="Completar descripciones pendientes",
-                  font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="Se muestran hasta 20 juegos sin descripción. Guarda cada cambio para retirarlo de esta tanda.").pack(anchor="w", pady=(3, 10))
-        pane = ttk.Panedwindow(outer, orient="horizontal")
-        pane.pack(fill="both", expand=True)
-        left = ttk.Frame(pane, padding=(0, 0, 8, 0))
-        right = ttk.Frame(pane, padding=(8, 0, 0, 0))
-        pane.add(left, weight=1); pane.add(right, weight=3)
-        self.listbox = tk.Listbox(left, exportselection=False, activestyle="dotbox")
-        sb = ttk.Scrollbar(left, orient="vertical", command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=sb.set)
-        self.listbox.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
-        self.listbox.bind("<<ListboxSelect>>", self.select_item)
-        self.lbl_title = ttk.Label(right, text="Selecciona un juego", font=("TkDefaultFont", 13, "bold"))
-        self.lbl_title.pack(anchor="w", pady=(0, 5))
-        self.lbl_meta = ttk.Label(right, text="", foreground="gray")
-        self.lbl_meta.pack(anchor="w", pady=(0, 8))
-        self.desc = tk.Text(right, wrap="word", undo=True, font=("TkDefaultFont", 11))
-        self.desc.pack(fill="both", expand=True)
-        dscroll = ttk.Scrollbar(right, orient="vertical", command=self.desc.yview)
-        self.desc.configure(yscrollcommand=dscroll.set)
-        # Scrollbar alongside text
-        self.desc.pack(side="left", fill="both", expand=True)
-        dscroll.pack(side="right", fill="y")
-        controls = ttk.Frame(outer)
-        controls.pack(fill="x", pady=(10, 0))
-        self.progress = ttk.Label(controls, text="")
-        self.progress.pack(side="left")
-        ttk.Button(controls, text="Guardar descripción", command=self.save_current).pack(side="right", padx=4)
-        ttk.Button(controls, text="Siguiente tanda", command=self.load_batch).pack(side="right", padx=4)
-        ttk.Button(controls, text="Cerrar", command=self.close).pack(side="right", padx=4)
+        main=ttk.Frame(self.root,padding=12); main.pack(fill="both",expand=True)
+        ttk.Label(main,text="Completar descripciones pendientes",font=("TkDefaultFont",16,"bold")).pack(anchor="w")
+        ttk.Label(main,text="Tanda de hasta 20 registros. Guardar elimina el registro de la lista pendiente.").pack(anchor="w",pady=(4,10))
+        pw=ttk.Panedwindow(main,orient="horizontal"); pw.pack(fill="both",expand=True)
+        left=ttk.Frame(pw); right=ttk.Frame(pw,padding=(12,0,0,0)); pw.add(left,weight=1); pw.add(right,weight=3)
+        self.lb=tk.Listbox(left,exportselection=False); self.lb.pack(side="left",fill="both",expand=True)
+        sc=ttk.Scrollbar(left,orient="vertical",command=self.lb.yview); sc.pack(side="right",fill="y"); self.lb.configure(yscrollcommand=sc.set)
+        self.lb.bind("<<ListboxSelect>>",self.select)
+        self.heading=ttk.Label(right,text="Selecciona un juego",font=("TkDefaultFont",13,"bold")); self.heading.pack(anchor="w")
+        self.meta=ttk.Label(right,text="",foreground="gray"); self.meta.pack(anchor="w",pady=(3,8))
+        box=ttk.Frame(right); box.pack(fill="both",expand=True)
+        self.txt=tk.Text(box,wrap="word",undo=True,font=("TkDefaultFont",11)); self.txt.pack(side="left",fill="both",expand=True)
+        ts=ttk.Scrollbar(box,orient="vertical",command=self.txt.yview); ts.pack(side="right",fill="y"); self.txt.configure(yscrollcommand=ts.set)
+        self.txt.bind("<<Modified>>",self.changed)
+        buttons=ttk.Frame(main); buttons.pack(fill="x",pady=(10,0))
+        self.status=ttk.Label(buttons,text=""); self.status.pack(side="left")
+        for label,cmd in [("Omitir",self.skip),("Anterior",self.previous),("Guardar",self.save),("Guardar y siguiente",self.save_next),("Nueva tanda",self.batch)]:
+            ttk.Button(buttons,text=label,command=cmd).pack(side="right",padx=3)
 
-    def load_batch(self):
-        if self.current is not None and self.has_unsaved():
-            if not messagebox.askyesno("Cambios pendientes", "Hay cambios sin guardar. ¿Descartarlos y cargar otra tanda?", parent=self.root):
-                return
-        rows = self.con.execute("""
-            SELECT id, titulo, COALESCE(codigo,''), COALESCE(descripcion,'')
-            FROM juegos WHERE descripcion IS NULL OR TRIM(descripcion)=''
-        """).fetchall()
-        random.shuffle(rows)
-        self.items = rows[:LIMIT]
-        self.current = None
-        self.listbox.delete(0, "end")
-        for jid, title, code, _ in self.items:
-            self.listbox.insert("end", (f"{code} · " if code else "") + title)
-        self.desc.delete("1.0", "end")
-        self.lbl_title.config(text="Selecciona un juego")
-        self.lbl_meta.config(text="")
-        self.progress.config(text=f"{len(self.items)} juego(s) en esta tanda · pendientes en DB: {len(rows)}")
-        if not self.items:
-            messagebox.showinfo("¡Listo!", "No hay juegos con descripciones vacías.", parent=self.root)
+    def pending(self):
+        return self.db.execute("SELECT id,titulo,COALESCE(codigo,''),COALESCE(descripcion,'') FROM juegos WHERE descripcion IS NULL OR TRIM(descripcion)=''").fetchall()
 
-    def select_item(self, _event=None):
-        selection = self.listbox.curselection()
-        if not selection: return
-        idx = selection[0]
-        row = self.items[idx]
-        if self.current is not None and self.current != row[0] and self.has_unsaved():
-            if not messagebox.askyesno("Cambios pendientes", "¿Descartar los cambios no guardados?", parent=self.root):
-                self.listbox.selection_set(self.items.index(next(x for x in self.items if x[0] == self.current)))
-                return
-        self.current = row[0]
-        self.lbl_title.config(text=row[1])
-        self.lbl_meta.config(text=f"ID: {row[0]} · Código: {row[2] or '—'}")
-        self.desc.delete("1.0", "end")
-        self.desc.insert("1.0", row[3] or "")
+    def batch(self):
+        if not self._confirm_leave(): return
+        allrows=self.pending(); random.shuffle(allrows); self.rows=allrows[:LIMIT]; self.current=None; self.dirty=False
+        self.lb.delete(0,"end")
+        for r in self.rows: self.lb.insert("end",(r[2]+" · " if r[2] else "")+r[1])
+        self.clear_editor()
+        self.status.config(text=f"{len(self.rows)} en esta tanda · {len(allrows)} pendientes total")
+        if not self.rows: messagebox.showinfo("Biblioteca", "No quedan descripciones pendientes.",parent=self.root)
 
-    def has_unsaved(self):
-        if self.current is None: return False
-        original = next((r[3] for r in self.items if r[0] == self.current), "")
-        return self.desc.get("1.0", "end").strip() != (original or "").strip()
+    def clear_editor(self):
+        self.txt.delete("1.0","end"); self.txt.edit_modified(False); self.heading.config(text="Selecciona un juego"); self.meta.config(text="")
+
+    def changed(self,_=None):
+        if self.txt.edit_modified():
+            self.dirty=True
+            self.txt.edit_modified(False)
+
+    def _confirm_leave(self):
+        if self.dirty and not messagebox.askyesno("Cambios sin guardar","Descartar los cambios actuales?",parent=self.root): return False
+        self.dirty=False; return True
+
+    def select(self,_=None):
+        sel=self.lb.curselection()
+        if not sel:return
+        row=self.rows[sel[0]]
+        if self.current is not None and self.current!=row[0] and not self._confirm_leave():
+            self.lb.selection_set(next(i for i,r in enumerate(self.rows) if r[0]==self.current)); return
+        self.current=row[0]; self.heading.config(text=row[1]); self.meta.config(text=f"Registro {row[0]} · Código {row[2] or '—'}")
+        self.txt.delete("1.0","end"); self.txt.insert("1.0",row[3]); self.txt.edit_modified(False); self.dirty=False
 
     def backup(self):
-        if self.backup_done: return
-        backup_path = DB_PATH + ".backup-before-description-edit"
-        if not os.path.exists(backup_path):
-            with sqlite3.connect(backup_path) as dest:
-                self.con.backup(dest)
-        self.backup_done = True
+        if not os.path.exists(BACKUP_PATH):
+            with sqlite3.connect(BACKUP_PATH) as target: self.db.backup(target)
 
-    def save_current(self):
-        if self.current is None:
-            messagebox.showinfo("Guardar", "Selecciona un juego primero.", parent=self.root)
-            return
-        text = self.desc.get("1.0", "end").strip()
-        if not text:
-            messagebox.showwarning("Descripción vacía", "Escribe una descripción antes de guardar.", parent=self.root)
-            return
+    def save(self):
+        if self.current is None: messagebox.showinfo("Guardar","Selecciona un juego.",parent=self.root); return False
+        val=self.txt.get("1.0","end").strip()
+        if not val: messagebox.showwarning("Descripción","La descripción no puede quedar vacía.",parent=self.root); return False
         try:
-            self.backup()
-            self.con.execute("UPDATE juegos SET descripcion=? WHERE id=?", (text, self.current))
-            self.con.commit()
+            self.backup(); self.db.execute("UPDATE juegos SET descripcion=? WHERE id=?",(val,self.current)); self.db.commit()
         except Exception as e:
-            self.con.rollback()
-            messagebox.showerror("Error", f"No se pudo guardar:\n{e}", parent=self.root)
-            return
-        saved_id = self.current
-        self.items = [r for r in self.items if r[0] != saved_id]
-        self.listbox.delete(self.listbox.curselection()[0])
-        self.current = None
-        self.desc.delete("1.0", "end")
-        self.lbl_title.config(text="Descripción guardada")
-        self.lbl_meta.config(text="")
-        remaining = self.con.execute("SELECT COUNT(*) FROM juegos WHERE descripcion IS NULL OR TRIM(descripcion)=''").fetchone()[0]
-        self.progress.config(text=f"Guardado · {len(self.items)} restante(s) en esta tanda · pendientes en DB: {remaining}")
-        if not self.items:
-            messagebox.showinfo("Tanda completada", "¡Tanda completada! Puedes cargar la siguiente.", parent=self.root)
+            self.db.rollback(); messagebox.showerror("Error",f"No se pudo guardar: {e}",parent=self.root); return False
+        idx=self.lb.curselection()[0]; saved=self.current
+        self.rows=[r for r in self.rows if r[0]!=saved]; self.lb.delete(idx); self.current=None; self.dirty=False; self.clear_editor()
+        count=len(self.pending()); self.status.config(text=f"Guardado · {len(self.rows)} restantes en tanda · {count} pendientes total")
+        if not self.rows: messagebox.showinfo("Tanda completada","Tanda terminada. Puedes cargar otra.",parent=self.root)
+        return True
+
+    def save_next(self):
+        if self.save():
+            if self.rows: self.lb.selection_set(0); self.lb.event_generate("<<ListboxSelect>>")
+            else:self.batch()
+
+    def skip(self):
+        if not self.rows:return
+        if not self._confirm_leave():return
+        if self.current is not None:
+            i=next((i for i,r in enumerate(self.rows) if r[0]==self.current),0)
+        else:i=self.lb.curselection()[0] if self.lb.curselection() else 0
+        self.current=None; self.dirty=False; self.lb.selection_clear(0,"end")
+        if len(self.rows)>1:
+            nxt=(i+1)%len(self.rows); self.lb.selection_set(nxt); self.lb.event_generate("<<ListboxSelect>>")
+        else:self.clear_editor()
+
+    def previous(self):
+        if not self.rows:return
+        if not self._confirm_leave():return
+        i=next((i for i,r in enumerate(self.rows) if r[0]==self.current),0)
+        nxt=(i-1)%len(self.rows); self.lb.selection_set(nxt); self.lb.event_generate("<<ListboxSelect>>")
 
     def close(self):
-        self.con.close()
-        self.root.destroy()
+        if not self._confirm_leave():return
+        self.db.close(); self.root.destroy()
 
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    try:
-        app = DescriptionBatchApp(root)
-    except Exception as exc:
-        messagebox.showerror("No se pudo iniciar", str(exc))
-        root.destroy()
-    else:
-        root.mainloop()
+if __name__=="__main__":
+    root=tk.Tk()
+    try: app=App(root)
+    except Exception as e: messagebox.showerror("Inicio",str(e)); root.destroy()
+    else: root.mainloop()
