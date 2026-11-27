@@ -128,6 +128,38 @@ export interface BackupResult {
   path: string;
 }
 
+export interface BackupEntry {
+  fileName: string;
+  size: number;
+  /** ISO timestamp */
+  modified: string;
+  preRestore: boolean;
+}
+
+export interface BackupCheck {
+  ok: boolean;
+  integrity: string;
+  foreignKeys: number;
+  ftsOk: boolean | null;
+  games: number;
+  schemaOk: boolean;
+}
+
+export interface RestoreResult {
+  restoredFrom: string;
+  preRestoreBackup: string;
+  games: number;
+  /** Copy succeeded but the database could not be reopened. */
+  warning?: string | null;
+}
+
+export type ExportFormat = "csv" | "json";
+
+export interface ExportResult {
+  path: string;
+  rows: number;
+}
+
 export interface MigrationStatus {
   current: number;
   latest: number;

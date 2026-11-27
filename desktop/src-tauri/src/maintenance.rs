@@ -580,7 +580,7 @@ const DIFF: &str = "b.titulo IS NOT e.titulo OR b.codigo IS NOT e.codigo \
 
 /// `integrity-check` de FTS5. En conexiones de solo lectura (no permiten el comando) se usa una
 /// comprobación más débil: cada fila de `juegos_busqueda` tiene su entrada en `juegos_fts_docsize`.
-fn fts_ok(conn: &Connection) -> Result<bool, AppError> {
+pub fn fts_ok(conn: &Connection) -> Result<bool, AppError> {
     if !repo::table_exists(conn, "juegos_fts")? {
         return Ok(false);
     }

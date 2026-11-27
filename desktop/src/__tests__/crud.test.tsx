@@ -260,7 +260,7 @@ describe("App guard and read-only", () => {
 describe("SettingsDialog", () => {
   const session: SessionInfo = { dbFileName: "x.db", dbDir: "C:/d", readOnly: false, lastBackup: null };
   const setup = () => {
-    const p = { onClose: vi.fn(), onDbChanged: vi.fn(), onSessionChanged: vi.fn(), onMigrated: vi.fn() };
+    const p = { onClose: vi.fn(), onDbChanged: vi.fn(), onSessionChanged: vi.fn(), onMigrated: vi.fn(), onRestored: vi.fn() };
     render(<SettingsDialog session={session} {...p} />);
     return p;
   };

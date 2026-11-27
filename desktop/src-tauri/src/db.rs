@@ -51,28 +51,55 @@ fn canonical_file(raw: &Path) -> Result<PathBuf, AppError> {
     Ok(path)
 }
 
-/// `RPGLIB_DB_PATH` or the dev copy (used by the bench/parity tools; the app uses
-/// `resolve_app_db_path`).
-pub fn resolve_db_path() -> Result<PathBuf, AppError> {
-    let raw = match std::env::var_os("RPGLIB_DB_PATH") {
-        Some(v) if !v.is_empty() => PathBuf::from(v),
-        _ => PathBuf::from(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../dev-data/juegos.dev.db"
-        )),
-    };
-    canonical_file(&raw)
+fn env_db_path() -> Option<PathBuf> {
+    std::env::var_os("RPGLIB_DB_PATH")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
-/// Resolution order for the app (ADR-012): `RPGLIB_DB_PATH` -> `settings.dbPath` -> dev copy.
+/// Compiled-in development copy. Only meaningful on the development machine.
+fn dev_db_path() -> PathBuf {
+    PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../dev-data/juegos.dev.db"
+    ))
+}
+
+/// Fallback used when neither `RPGLIB_DB_PATH` nor `settings.dbPath` is set: the dev copy in debug
+/// builds, nothing in release builds (ADR-018).
+pub fn fallback_db_path(debug: bool) -> Option<PathBuf> {
+    debug.then(dev_db_path)
+}
+
+/// `RPGLIB_DB_PATH` or the dev copy (used by the bench/parity tools in any build profile; the app
+/// uses `resolve_app_db_path`).
+pub fn resolve_db_path() -> Result<PathBuf, AppError> {
+    canonical_file(&env_db_path().unwrap_or_else(dev_db_path))
+}
+
+/// Resolution order for the app (ADR-012/018): `RPGLIB_DB_PATH` -> `settings.dbPath` -> dev copy
+/// (debug builds only). Without any, returns a `Config` error so the UI asks for a database.
 pub fn resolve_app_db_path(settings: &crate::settings::Settings) -> Result<PathBuf, AppError> {
-    let env_set = std::env::var_os("RPGLIB_DB_PATH").is_some_and(|v| !v.is_empty());
-    if !env_set {
-        if let Some(p) = settings.db_path.as_deref().filter(|p| !p.trim().is_empty()) {
-            return canonical_file(Path::new(p));
-        }
+    resolve_app_db_path_with(settings, env_db_path(), cfg!(debug_assertions))
+}
+
+pub fn resolve_app_db_path_with(
+    settings: &crate::settings::Settings,
+    env: Option<PathBuf>,
+    debug: bool,
+) -> Result<PathBuf, AppError> {
+    if let Some(p) = env {
+        return canonical_file(&p);
     }
-    resolve_db_path()
+    if let Some(p) = settings.db_path.as_deref().filter(|p| !p.trim().is_empty()) {
+        return canonical_file(Path::new(p));
+    }
+    match fallback_db_path(debug) {
+        Some(p) => canonical_file(&p),
+        None => Err(AppError::Config(
+            "No hay ninguna base de datos configurada. Elija un archivo .db.".into(),
+        )),
+    }
 }
 
 /// True when `RPGLIB_READ_ONLY=1`.
@@ -140,6 +167,15 @@ pub const JUEGOS_COLUMNS: [&str; 11] = [
     "puntuacion",
 ];
 
+/// Schema-read failure: a lock held by another app (e.g. Python with `BEGIN EXCLUSIVE`) is `Busy`,
+/// not "invalid database"; anything else means the file is not a usable catalog.
+fn invalid_db(e: impl Into<AppError>) -> AppError {
+    match e.into() {
+        AppError::Busy(m) => AppError::Busy(m),
+        other => AppError::Config(format!("No es una base válida: {other}")),
+    }
+}
+
 /// Verifies the catalog schema (never creates or alters anything). Error lists what is missing.
 pub fn validate_schema(conn: &Connection) -> Result<(), AppError> {
     let mut missing: Vec<String> = Vec::new();
@@ -147,15 +183,12 @@ pub fn validate_schema(conn: &Connection) -> Result<(), AppError> {
     {
         let mut st = conn
             .prepare("SELECT name FROM pragma_table_info('juegos')")
-            .map_err(|e| AppError::Config(format!("No es una base válida: {e}")))?;
+            .map_err(invalid_db)?;
         let rows = st
             .query_map([], |r| r.get::<_, String>(0))
-            .map_err(|e| AppError::Config(format!("No es una base válida: {e}")))?;
+            .map_err(invalid_db)?;
         for r in rows {
-            have.push(
-                r.map_err(|e| AppError::Config(format!("No es una base válida: {e}")))?
-                    .to_lowercase(),
-            );
+            have.push(r.map_err(invalid_db)?.to_lowercase());
         }
     }
     if have.is_empty() {
@@ -168,9 +201,7 @@ pub fn validate_schema(conn: &Connection) -> Result<(), AppError> {
         }
     }
     for t in ["tags", "juego_tags"] {
-        if !crate::repo::table_exists(conn, t)
-            .map_err(|e| AppError::Config(format!("No es una base válida: {e}")))?
-        {
+        if !crate::repo::table_exists(conn, t).map_err(invalid_db)? {
             missing.push(format!("tabla {t}"));
         }
     }
@@ -198,6 +229,19 @@ pub fn open_validated(path: &Path, read_only: bool) -> Result<Connection, AppErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_has_no_dev_fallback() {
+        assert!(fallback_db_path(false).is_none());
+        assert!(fallback_db_path(true).is_some());
+        let st = crate::settings::Settings::default();
+        let e = resolve_app_db_path_with(&st, None, false).unwrap_err();
+        assert_eq!(e.kind(), "Config");
+        assert_eq!(
+            e.to_string(),
+            "No hay ninguna base de datos configurada. Elija un archivo .db."
+        );
+    }
 
     #[test]
     fn guard_rejects_primary() {

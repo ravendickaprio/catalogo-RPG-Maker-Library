@@ -9,6 +9,8 @@ import MaintenanceDialog from "./components/MaintenanceDialog";
 import DashboardDialog, { type DashboardFilter } from "./components/DashboardDialog";
 import ReviewDialog, { type ReviewCriterion } from "./components/ReviewDialog";
 import ShortcutsDialog from "./components/ShortcutsDialog";
+import ExportDialog from "./components/ExportDialog";
+import FirstRunScreen from "./components/FirstRunScreen";
 import ToolsMenu from "./components/ToolsMenu";
 import WelcomeScreen, { welcomeOnStartup } from "./components/WelcomeScreen";
 import logo from "./assets/logo.webp";
@@ -32,6 +34,8 @@ import { loadSidebarOpen, loadView, type ViewMode } from "./lib/view";
 export default function App() {
   const [info, setInfo] = useState<LibraryInfo | null>(null);
   const [infoError, setInfoError] = useState<AppError | null>(null);
+  const [sessionConfigError, setSessionConfigError] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [estado, setEstado] = useState("");
   const [idioma, setIdioma] = useState("");
@@ -73,7 +77,16 @@ export default function App() {
     );
   }, []);
   const loadSession = useCallback(() => {
-    getSessionInfo().then(setSession, () => undefined);
+    getSessionInfo().then(
+      (s) => {
+        setSession(s);
+        setSessionConfigError(null);
+      },
+      (e) => {
+        const err = normalizeError(e);
+        setSessionConfigError(err.kind === "Config" ? err.message : null);
+      },
+    );
     getVocabulary().then(setVocab, () => undefined);
   }, []);
   useEffect(loadInfo, [loadInfo]);
@@ -208,12 +221,24 @@ export default function App() {
     },
     [afterWrite],
   );
+  const onRestored = useCallback(() => {
+    clearCoverCache();
+    dirtyRef.current = false;
+    setCreating(false);
+    setSelectedId(null);
+    loadInfo();
+    loadSession();
+    reloadSearch();
+    setRefreshTick((n) => n + 1);
+    setToast("Copia restaurada");
+  }, [loadInfo, loadSession, reloadSearch]);
   const onDbChanged = useCallback(
     (i: LibraryInfo) => {
       clearCoverCache();
       dirtyRef.current = false;
       setInfo(i);
       setInfoError(null);
+      setSessionConfigError(null);
       setCreating(false);
       setSelectedId(null);
       loadSession();
@@ -281,6 +306,7 @@ export default function App() {
       { id: "edit", label: "Editar juego seleccionado", run: () => sendCommand("edit") },
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
       { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
+      { id: "export", label: "Exportar biblioteca…", run: () => setExportOpen(true) },
       { id: "maintenance", label: "Centro de mantenimiento", run: () => setMaintOpen(true) },
       { id: "dashboard", label: "Estadísticas", run: () => setDashOpen(true) },
       { id: "review", label: "Revisión por tandas", run: () => {
@@ -319,6 +345,15 @@ export default function App() {
     loadMore: search.loadMore,
     focusTick,
   };
+
+  const firstRun = !info && (infoError?.kind === "Config" || sessionConfigError != null);
+  if (firstRun) {
+    return (
+      <div className="app">
+        <FirstRunScreen message={infoError?.kind === "Config" ? infoError.message : sessionConfigError} onOpened={onDbChanged} />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -377,6 +412,7 @@ export default function App() {
         <ToolsMenu
           items={[
             { id: "import", label: "Importar…", title: "Importar juegos desde una carpeta", run: () => setImportOpen(true) },
+            { id: "export", label: "Exportar biblioteca…", title: "Guardar los datos en CSV o JSON", run: () => setExportOpen(true) },
             { id: "maintenance", label: "Mantenimiento", title: "Detectar y corregir problemas de la biblioteca", run: () => setMaintOpen(true) },
             { id: "dashboard", label: "Estadísticas", title: "Resumen y cobertura de datos de la biblioteca", run: () => setDashOpen(true) },
             { id: "review", label: "Revisión por tandas", title: "Revisar tandas aleatorias de juegos", run: () => {
@@ -528,12 +564,14 @@ export default function App() {
             setSession(s);
             loadInfo();
           }}
+          onRestored={onRestored}
           onMigrated={() => {
             clearCoverCache();
             afterWrite();
           }}
         />
       )}
+      {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} onDone={setToast} />}
       {pendingAction && (
         <ConfirmDialog
           title="¿Descartar los cambios?"

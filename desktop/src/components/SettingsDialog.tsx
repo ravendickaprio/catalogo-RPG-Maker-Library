@@ -3,6 +3,7 @@ import { createBackup, getMigrationStatus, getSessionInfo, normalizeError, runMi
 import type { LibraryInfo, MigrationResult, MigrationStatus, SessionInfo } from "../api/types";
 import { useDialog } from "../hooks/useDialog";
 import ConfirmDialog from "./ConfirmDialog";
+import BackupsSection from "./BackupsSection";
 
 interface Props {
   session: SessionInfo | null;
@@ -13,15 +14,18 @@ interface Props {
   onSessionChanged: (s: SessionInfo) => void;
   /** Migrations were applied: data and counts may have changed. */
   onMigrated: () => void;
+  /** A backup was restored: refresh everything like a DB switch. */
+  onRestored: () => void;
 }
 
-export default function SettingsDialog({ session, onClose, onDbChanged, onSessionChanged, onMigrated }: Props) {
+export default function SettingsDialog({ session, onClose, onDbChanged, onSessionChanged, onMigrated, onRestored }: Props) {
   const { ref, onKeyDown } = useDialog(onClose, "input");
   const uid = useId();
   const [path, setPath] = useState("");
   const [pathError, setPathError] = useState<string | null>(null);
   const [pathOk, setPathOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [backupsTick, setBackupsTick] = useState(0);
   const [modeError, setModeError] = useState<string | null>(null);
   const [backup, setBackup] = useState<{ path?: string; error?: string } | null>(null);
   const [status, setStatus] = useState<MigrationStatus | null>(null);
@@ -77,6 +81,7 @@ export default function SettingsDialog({ session, onClose, onDbChanged, onSessio
     try {
       const r = await createBackup();
       setBackup({ path: r.path });
+      setBackupsTick((n) => n + 1);
       getSessionInfo().then(onSessionChanged, () => undefined);
     } catch (e) {
       setBackup({ error: normalizeError(e).message });
@@ -181,6 +186,17 @@ export default function SettingsDialog({ session, onClose, onDbChanged, onSessio
               </p>
             )}
           </section>
+
+          <BackupsSection
+            headingId={`${uid}-s4`}
+            readOnly={readOnly}
+            reloadToken={backupsTick}
+            onRestored={() => {
+              onRestored();
+              getSessionInfo().then(onSessionChanged, () => undefined);
+              loadStatus();
+            }}
+          />
 
           <section aria-labelledby={`${uid}-s3`}>
             <h3 id={`${uid}-s3`}>Migraciones</h3>

@@ -294,3 +294,46 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 6. Aparecía el aviso «Biblioteca actualizada» tras una acción propia. **Causa real:** `App.tsx` usaba ese mismo texto en el `onChanged` de Importar y de Mantenimiento; se comprobó que las escrituras propias, el backup y el deshacer no cambian `PRAGMA data_version`. Se descartó la ventana de supresión de 2 s propuesta, que partía de una premisa falsa y podía ocultar cambios externos reales. Ahora los textos son distintos: «Cambios aplicados» para las acciones propias y «Biblioteca actualizada por otra aplicación» para los cambios externos.
 
 **Evidencias:** `npm test` 125 ok, typecheck ok y build de release ok.
+
+## Fase 9 — QA y distribución ✅ (2026-11-27, ADR-018)
+
+**Implementación.** El coordinador escribió el ADR-018 y el contrato. Tres Sonnet trabajaron en paralelo (backend, frontend, y herramientas con documentación). Un Haiku hizo la auditoría independiente y un Sonnet aplicó las correcciones aprobadas. El coordinador hizo la verificación, la prueba en la ventana real y corrigió dos fallos encontrados en las pruebas.
+- **Primer inicio:** en release ya no hay ruta compilada de desarrollo; sin base se muestra «Elegir base de datos».
+- **Copias de seguridad:**
+  - `list_backups`, `verify_backup`, `restore_backup` y `check_database`;
+  - restaurar = verificar → copia «pre-restauración» → API de backup sobre la conexión abierta, con el estado bloqueado hasta reabrir (aviso si la reapertura falla);
+  - las copias pre-restauración rotan aparte (se conservan 5);
+  - crear un backup o restaurar desisten con `Busy` a los 3 s en vez de esperar indefinidamente.
+- **Exportación CSV/JSON:**
+  - sin BLOBs; CSV con BOM, neutralización de fórmulas y escritura atómica;
+  - se rechaza escribir sobre la DB o en `backups/`, incluso a través de enlaces simbólicos;
+  - permiso `dialog:allow-save`.
+- **Distribución:**
+  - versión 0.9.0 en los tres manifiestos;
+  - instaladores NSIS (por usuario) y MSI;
+  - `docs/BUILD_LINUX.md`;
+  - `.github/workflows/build.yml` (Ubuntu deb/AppImage, Fedora rpm, Windows NSIS; `permissions: contents: read`; **no se ha subido ni ejecutado**).
+- **Herramientas:**
+  - `tools/interop_test.py` (coexistencia con Python, con `examples/interop_probe.rs`);
+  - `tools/bench_compare.py` (B-003).
+- **Documentación:** `MANUAL.md`, `RELEASE_CHECKLIST.md`, `RELEASE_NOTES.md`.
+
+**Fallos encontrados en las pruebas y corregidos por el coordinador:**
+- Con la DB bloqueada en exclusiva por otra app, abrirla daba `Config` («No es una base válida») en lugar de `Busy`. Ahora `db::invalid_db` mapea el bloqueo a `Busy`; test `open_while_exclusively_locked_is_busy_not_invalid`.
+- Node 26 (instalado en el equipo durante la sesión) expone un `localStorage` experimental que tapaba el de jsdom: fallaban los 140 tests del frontend. `vite.config.ts` pasa ahora `--no-experimental-webstorage` a los workers de test.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | **152 ok** (14 de backup), 1 ignorado |
+| clippy (`--all-targets --examples -D warnings`), `fmt --check`, typecheck, `npm test` | ok; **141** tests del frontend |
+| `python -I tools/interop_test.py` | **36/36 PASS**: escritura cruzada Python ↔ Rust en los dos sentidos; Python `BEGIN IMMEDIATE` y `EXCLUSIVE` → la app devuelve `Busy` en unos 5–7 s sin corromper; journal `delete`; sin `-wal`/`-shm` |
+| `tools/bench_compare.py` (B-003, Ryzen 7 5700X) | p50 con 50 000 juegos: búsqueda vacía 4644 ms (legacy) frente a 74 ms (app); «the» 3198 frente a 52,7 ms; «ry» 3489 frente a 134,6 ms (por encima del objetivo de 100 ms) |
+| `npx tauri build` | `RPG Maker Library_0.9.0_x64-setup.exe` (5,08 MiB) y `…_x64_en-US.msi` (10,77 MiB) |
+| Ventana real (release, sin base configurada) | Pantalla de primer inicio; ruta errónea → aviso; abrir la copia → biblioteca y bienvenida; crear y listar backups (fecha en `es-ES`, 4,8 MB); «Verificar base actual» ok (1160 juegos); restaurar con confirmación → 1160 juegos y copia pre-restauración; `verify_backup` ok; nombres `..\x`, `../x`, `C:\x` y vacío → `InvalidInput`; exportación CSV y JSON de 1160 filas (BOM, 12 columnas); exportar sobre la DB → `InvalidInput`; 0 errores de consola. Se borraron el `settings.json` y la carpeta `Roaming\local.rpgmakerlibrary.desktop` creados por la prueba; el hash de `juegos.db` no cambió |
+
+### Pendientes
+- **Linux sin verificar:** no hay WSL en el equipo. El flujo de CI está listo, pero subirlo necesita la aprobación del usuario; falta la prueba manual en Nobara.
+- La ruta de fallo al reabrir tras restaurar no tiene test (requeriría inyectar el fallo).
+- Las búsquedas de 1–2 caracteres con 50 000 juegos tardan unos 135 ms, por encima del objetivo de 100 ms.
+- Los instaladores no están firmados: Windows SmartScreen puede avisar al ejecutarlos. La firma de código requiere un certificado y se deja para cuando se decida publicar.

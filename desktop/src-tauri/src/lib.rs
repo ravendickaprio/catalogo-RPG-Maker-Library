@@ -64,7 +64,12 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::delete_orphan_tags,
             commands::rebuild_search_index,
             commands::list_batches,
-            commands::undo_last_batch
+            commands::undo_last_batch,
+            commands::list_backups,
+            commands::verify_backup,
+            commands::restore_backup,
+            commands::check_database,
+            commands::export_library
         ])
 }
 

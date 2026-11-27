@@ -20,5 +20,12 @@ export default defineConfig({
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.ts"] },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    // Node >= 25 ships its own experimental `localStorage` global (undefined without
+    // --localstorage-file) that shadows jsdom's; disable it so tests behave on any Node version.
+    poolOptions: { forks: { execArgv: ["--no-experimental-webstorage"] }, threads: { execArgv: ["--no-experimental-webstorage"] } },
+  },
 });

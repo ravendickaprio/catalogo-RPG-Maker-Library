@@ -15,6 +15,11 @@ import type {
   OrphanTag,
   UndoBatchResult,
   BackupResult,
+  BackupEntry,
+  BackupCheck,
+  RestoreResult,
+  ExportFormat,
+  ExportResult,
   Cover,
   DataVersion,
   GameDetail,
@@ -88,6 +93,11 @@ export const setFavorite = (id: number, favorite: boolean, expectedRevision: str
   call<GameDetail>("set_favorite", { id, favorite, opts: { expectedRevision } });
 export const deleteGame = (id: number, opts: WriteOptions) => call<null>("delete_game", { id, opts });
 export const createBackup = () => call<BackupResult>("create_backup");
+export const listBackups = () => call<BackupEntry[]>("list_backups");
+export const verifyBackup = (fileName: string) => call<BackupCheck>("verify_backup", { fileName });
+export const restoreBackup = (fileName: string) => call<RestoreResult>("restore_backup", { fileName });
+export const checkDatabase = () => call<BackupCheck>("check_database");
+export const exportLibrary = (path: string, format: ExportFormat) => call<ExportResult>("export_library", { path, format });
 export const setDbPath = (path: string) => call<LibraryInfo>("set_db_path", { path });
 export const setReadOnly = (readOnly: boolean) => call<SessionInfo>("set_read_only", { readOnly });
 export const getMigrationStatus = () => call<MigrationStatus>("get_migration_status");

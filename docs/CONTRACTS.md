@@ -318,3 +318,25 @@ type Dashboard = {
 - **Favoritos:** `FAVORITE_TAG = "Favorito"`. Comando `set_favorite { id, favorite: boolean, opts: { expectedRevision } } → GameDetail`. **Solo toca `juego_tags` (y crea la tag `Favorito` si no existe)**: no revalida ni normaliza el resto de campos, así que los registros antiguos con valores fuera de rango también se pueden marcar. Comprueba la revisión (otra → `Conflict`); solo lectura → `ReadOnly`; usa backup de sesión y `BEGIN IMMEDIATE`. La tag se busca sin distinguir mayúsculas (`NOCASE`). Conflicto en la interfaz → mensaje y recarga.
 - **Revisión por tandas:** pide los ids con `maintenance_list` (páginas de 500) del detector elegido, los baraja (Fisher–Yates) y toma N. Edita con el `GameForm` existente.
 - **Atajos:** una tabla única `SHORTCUTS` en `lib/` que alimenta tanto el manejador como el diálogo de ayuda.
+
+## Fase 9 — QA y distribución (ADR-018)
+
+### Comandos nuevos
+| Comando | Entrada | Retorno | Notas |
+|---|---|---|---|
+| `list_backups` | — | `BackupEntry[]` | Archivos de `backups/` junto a la DB abierta, del más reciente al más antiguo |
+| `verify_backup` | `{ fileName: string }` | `BackupCheck` | Solo un nombre de archivo de esa carpeta (sin separadores ni `..`); se resuelve con `canonicalize` y se comprueba el prefijo. Se abre en solo lectura |
+| `restore_backup` | `{ fileName: string }` | `RestoreResult` | Solo lectura → `ReadOnly`; verificación fallida → `InvalidInput`; bloqueado por otra app → `Busy` |
+| `check_database` | — | `BackupCheck` | Sobre la DB abierta; también disponible en modo solo lectura |
+| `export_library` | `{ path: string, format: "csv" \| "json" }` | `{ path: string; rows: number }` | La extensión debe coincidir con el formato. Rechaza la ruta de la DB, su carpeta `backups/` y rutas relativas |
+
+```ts
+type BackupEntry = { fileName: string; size: number; modified: string /* ISO */; preRestore: boolean };
+type BackupCheck = { ok: boolean; integrity: string; foreignKeys: number; ftsOk: boolean | null; games: number; schemaOk: boolean };
+type RestoreResult = { restoredFrom: string; preRestoreBackup: string; games: number };
+```
+
+### Frontend
+- **Primer inicio:** si `get_session_info` o `get_library_info` devuelven `Config` (no hay base), se muestra la pantalla «Elegir base de datos» en lugar de la biblioteca, con el botón «Elegir archivo…» (`open({ filters: [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }] })`), una ruta escrita, «Abrir» (`set_db_path`) y los errores claros. La bienvenida se muestra después.
+- **Ajustes → Copias de seguridad:** lista de backups (fecha `es-ES`, tamaño, «pre-restauración»), «Verificar» por fila, «Restaurar» con confirmación peligrosa («se sustituirá el contenido actual; antes se creará un backup»), «Verificar base actual» (`check_database`) y «Crear backup ahora» (existente). Tras restaurar se refresca todo (como tras cambiar de DB).
+- **Exportar:** acción «Exportar biblioteca…» (menú Herramientas y paleta) → elegir CSV o JSON → `save({ defaultPath: "biblioteca-YYYYMMDD.csv", filters })` → `export_library` → aviso con el número de filas.

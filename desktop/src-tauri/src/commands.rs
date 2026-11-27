@@ -300,6 +300,41 @@ impl AppState {
         Ok(ready)
     }
 
+    /// Restores `file_name` over the open database (see `backup::restore_into`) and swaps in a
+    /// freshly opened `Ready` (re-detects FTS, drops caches, re-baselines `data_version`).
+    /// The state's write lock is held from the copy through the reopen, so no other command can
+    /// obtain (or keep using) the old `Ready` in between: `ready()` blocks until this returns.
+    /// If the copy succeeded but the reopen fails, the result carries a `warning` and the old
+    /// connection (which already sees the restored content) stays in place.
+    pub fn restore_backup(&self, file_name: &str) -> Result<backup::RestoreResult, AppError> {
+        let mut guard = match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let old = guard.clone()?;
+        old.ensure_writable()?;
+        let db_path = db_path_of(&old)?;
+        let mut res = {
+            let mut conn = old.lock_conn()?;
+            backup::restore_into(&mut conn, &db_path, file_name)?
+        };
+        match Ready::open(&db_path, false) {
+            Ok(fresh) => {
+                fresh.backed_up.store(true, Ordering::SeqCst);
+                if let Ok(mut l) = fresh.last_backup.lock() {
+                    *l = Some(backup::backups_dir(&db_path).join(&res.pre_restore_backup));
+                }
+                *guard = Ok(fresh);
+            }
+            Err(e) => {
+                res.warning = Some(format!(
+                    "La copia se restauró, pero no se pudo reabrir la base: {e}; reinicie la aplicación."
+                ));
+            }
+        }
+        Ok(res)
+    }
+
     /// Persists the flag and reopens the same database in the requested mode.
     pub fn set_read_only(&self, read_only: bool) -> Result<Ready, AppError> {
         let mut s = self.settings_now();
@@ -526,6 +561,66 @@ pub async fn create_backup(state: State<'_, AppState>) -> Result<BackupResult, A
     })
     .await
     .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+fn db_path_of(ready: &Ready) -> Result<PathBuf, AppError> {
+    ready
+        .db_path
+        .clone()
+        .ok_or_else(|| AppError::Database("Se desconoce la ruta de la base.".into()))
+}
+
+#[tauri::command]
+pub async fn list_backups(
+    state: State<'_, AppState>,
+) -> Result<Vec<backup::BackupEntry>, AppError> {
+    let ready = state.ready()?;
+    let p = db_path_of(&ready)?;
+    tauri::async_runtime::spawn_blocking(move || backup::list_backups(&p))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn verify_backup(
+    state: State<'_, AppState>,
+    file_name: String,
+) -> Result<backup::BackupCheck, AppError> {
+    let ready = state.ready()?;
+    let p = db_path_of(&ready)?;
+    tauri::async_runtime::spawn_blocking(move || backup::verify_backup(&p, &file_name))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn restore_backup<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    file_name: String,
+) -> Result<backup::RestoreResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        app.state::<AppState>().restore_backup(&file_name)
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn check_database(state: State<'_, AppState>) -> Result<backup::BackupCheck, AppError> {
+    run_blocking(&state, |c, _| backup::check_conn(c)).await
+}
+
+#[tauri::command]
+pub async fn export_library(
+    state: State<'_, AppState>,
+    path: String,
+    format: String,
+) -> Result<backup::ExportResult, AppError> {
+    run_blocking(&state, move |c, r| {
+        backup::export_library(c, &db_path_of(r)?, &path, &format)
+    })
+    .await
 }
 
 async fn reopened_info(ready: Ready) -> Result<LibraryInfo, AppError> {

@@ -8,3 +8,8 @@ export function formatDateTime(iso: string | number | Date): string {
 export function formatMs(ms: number): string {
   return `${ms.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ms`;
 }
+
+export function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("es-ES")} KB`;
+}
