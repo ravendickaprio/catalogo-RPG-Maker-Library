@@ -106,3 +106,36 @@ Este proyecto está en desarrollo. Se irán incorporando mejoras y nuevas funcio
 ## 📄 Licencia
 
 Consulta el archivo `LICENSE` para conocer los términos de uso y distribución del proyecto.
+
+
+## 📝 Herramienta para completar descripciones
+
+Script independiente para revisar juegos con descripción vacía en grupos de hasta 20 registros:
+
+```bash
+python catalogo_rpgmaker-descripciones.py
+```
+
+- Selecciona una tanda de hasta 20 juegos sin descripción.
+- Permite escribir y guardar la descripción individualmente.
+- Al guardar, el juego se retira de la tanda y deja de aparecer en futuras selecciones pendientes.
+- Crea una copia de seguridad de `juegos.db` antes del primer cambio (`juegos.db.backup-before-description-edit`).
+- Incluye navegación anterior, omitir, guardar y guardar/siguiente.
+- No altera otros campos ni elimina registros.
+- Usa el `juegos.db` ubicado junto al script.
+
+
+## Archivos de base de datos y Git
+
+El archivo `.gitignore` excluye bases de datos locales (`.db`, `.sqlite`, `.sqlite3` y archivos auxiliares de estas extensiones) para evitar que bases de datos de trabajo se agreguen o se actualicen accidentalmente en Git.
+
+
+## Editor independiente de registros (descripciones)
+
+La herramienta `catalogo_rpgmaker-editor-completo.py` conserva el flujo de revisión por tandas de hasta 20 juegos con descripción pendiente y la identidad visual del catálogo v4 (temas Claro, Oscuro y Noche). Además de completar la descripción, permite editar los campos de la ficha: título, código, estado, idioma, página, tipo, puntuación, tags, ruta e imagen.
+
+```bash
+python catalogo_rpgmaker-editor-completo.py
+```
+
+Antes de guardar cambios crea una copia de seguridad local de la base de datos. Los registros guardados dejan de aparecer en las tandas pendientes. Esta utilidad no elimina juegos ni modifica los archivos de juego en sus carpetas.
