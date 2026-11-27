@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AppError,
   BackupResult,
@@ -6,6 +6,12 @@ import type {
   DataVersion,
   GameDetail,
   GameInput,
+  HistoryEntry,
+  ImportPreview,
+  ImportRequest,
+  ImportResult,
+  ScanProgress,
+  UndoResult,
   LibraryInfo,
   MigrationResult,
   MigrationStatus,
@@ -71,3 +77,13 @@ export const setDbPath = (path: string) => call<LibraryInfo>("set_db_path", { pa
 export const setReadOnly = (readOnly: boolean) => call<SessionInfo>("set_read_only", { readOnly });
 export const getMigrationStatus = () => call<MigrationStatus>("get_migration_status");
 export const runMigrations = () => call<MigrationResult>("run_migrations");
+
+export const scanImport = (root: string, onProgress: (p: ScanProgress) => void) => {
+  const channel = new Channel<ScanProgress>();
+  channel.onmessage = onProgress;
+  return call<ImportPreview>("scan_import", { root, onProgress: channel });
+};
+export const cancelScan = () => call<null>("cancel_scan");
+export const runImport = (req: ImportRequest) => call<ImportResult>("run_import", { req });
+export const getImportHistory = () => call<HistoryEntry[]>("get_import_history");
+export const undoLastImport = () => call<UndoResult>("undo_last_import");

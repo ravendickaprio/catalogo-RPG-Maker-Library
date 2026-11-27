@@ -29,7 +29,7 @@ fn nfc(s: &str) -> String {
     s.nfc().collect()
 }
 
-fn check_text(
+pub fn check_text(
     name: &str,
     raw: &str,
     trim: bool,
@@ -313,10 +313,15 @@ pub fn delete_game(conn: &Connection, id: i64, opts: &WriteOptions) -> Result<()
     let expected = require_revision(opts)?;
     in_tx(conn, || {
         check_revision(conn, id, expected)?;
-        conn.execute("DELETE FROM juego_tags WHERE juego_id = ?", [id])?;
-        conn.execute("DELETE FROM juegos WHERE id = ?", [id])?;
-        Ok(())
+        delete_game_row(conn, id)
     })
+}
+
+/// Borra el juego y sus tags sin abrir transacción (el llamador la gestiona).
+pub fn delete_game_row(conn: &Connection, id: i64) -> Result<(), AppError> {
+    conn.execute("DELETE FROM juego_tags WHERE juego_id = ?", [id])?;
+    conn.execute("DELETE FROM juegos WHERE id = ?", [id])?;
+    Ok(())
 }
 
 fn distinct(conn: &Connection, sql: &str) -> Result<Vec<String>, AppError> {

@@ -138,3 +138,66 @@ export interface MigrationResult {
   applied: number[];
   backupPath: string;
 }
+
+// Fase 6 — Importador (ADR-015)
+export interface ScanProgress {
+  scanned: number;
+  candidates: number;
+  currentDir: string;
+}
+export interface ParsedName {
+  titulo: string;
+  codigo: string;
+  estado: string;
+  idioma: string;
+}
+export type ItemStatus = "nuevo" | "duplicado_codigo" | "duplicado_ruta" | "duplicado_lote" | "sin_codigo";
+export interface ImportItem {
+  key: string;
+  kind: "archivo" | "carpeta";
+  path: string;
+  name: string;
+  parsed: ParsedName;
+  status: ItemStatus;
+  duplicateOf: { id: number | null; titulo: string } | null;
+}
+export interface ImportPreview {
+  root: string;
+  items: ImportItem[];
+  defaults: { pagina: string; tipo: string };
+  counts: { total: number; nuevo: number; duplicadoCodigo: number; duplicadoRuta: number; duplicadoLote: number; sinCodigo: number };
+  cancelled: boolean;
+  truncated: boolean;
+  scanned: number;
+  unreadable: number;
+}
+export interface ImportRequest {
+  root: string;
+  pagina: string;
+  tipo: string;
+  items: { key: string; path: string; titulo: string; codigo: string; estado: string; idioma: string }[];
+}
+export interface ImportResult {
+  inserted: { id: number; titulo: string; codigo: string }[];
+  skipped: { key: string; reason: string }[];
+  backupPath: string | null;
+  importId: string | null;
+  warning: string | null;
+}
+export interface HistoryEntry {
+  id: string;
+  timestamp: string;
+  root: string;
+  insertedCount: number;
+  skippedCount: number;
+  backupPath: string | null;
+  undone: boolean;
+  undoneAt: string | null;
+}
+export interface UndoResult {
+  importId: string;
+  deleted: number;
+  kept: { id: number; titulo: string; reason: string }[];
+  backupPath: string | null;
+  warning: string | null;
+}

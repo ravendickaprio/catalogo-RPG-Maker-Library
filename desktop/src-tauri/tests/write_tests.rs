@@ -8,13 +8,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::TempDir;
 
-const SCHEMA: &str = include_str!("fixtures/schema.sql");
+mod common;
 
 fn make_db(dir: &TempDir) -> PathBuf {
-    let path = dir.path().join("t.db");
-    let c = Connection::open(&path).unwrap();
-    c.execute_batch(SCHEMA).unwrap();
-    c.execute_batch(
+    common::make_db_with(
+        dir,
+        "t.db",
         "INSERT INTO juegos(titulo,codigo,estado,idioma,tipo,pagina,descripcion,imagen) VALUES
            ('Zeta Quest','RY-1000','Sin empezar','Japonés','RPG','ryuugames','épica', X'52494646040000005745425056503820'),
            ('Alpha Tale','RY-1001','Raro estado','Inglés','Tipo Raro','OtraPagina','',NULL),
@@ -22,8 +21,6 @@ fn make_db(dir: &TempDir) -> PathBuf {
          INSERT INTO tags(nombre) VALUES ('rpg'),('Fantasía');
          INSERT INTO juego_tags(juego_id,tag_id) VALUES (1,1),(1,2);",
     )
-    .unwrap();
-    path
 }
 
 fn input(titulo: &str, codigo: &str) -> GameInput {

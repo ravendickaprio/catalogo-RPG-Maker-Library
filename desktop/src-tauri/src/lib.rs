@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod images;
+pub mod importer;
 pub mod migrate;
 pub mod models;
 pub mod protocol;
@@ -43,19 +44,29 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::set_db_path,
             commands::set_read_only,
             commands::get_migration_status,
-            commands::run_migrations
+            commands::run_migrations,
+            commands::scan_import,
+            commands::cancel_scan,
+            commands::run_import,
+            commands::get_import_history,
+            commands::undo_last_import
         ])
 }
 
 pub fn run() {
     app_builder(tauri::Builder::default(), AppState::uninitialized())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let settings_path = app
                 .path()
                 .app_config_dir()
                 .ok()
                 .map(|d| d.join("settings.json"));
-            app.state::<AppState>().init(settings_path);
+            let state = app.state::<AppState>();
+            if let Ok(dir) = app.path().app_data_dir() {
+                state.set_data_dir(dir);
+            }
+            state.init(settings_path);
             Ok(())
         })
         .run(tauri::generate_context!())

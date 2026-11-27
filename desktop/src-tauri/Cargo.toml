@@ -19,6 +19,10 @@ name = "gen_synth"
 path = "src/bin/gen_synth.rs"
 
 [[bin]]
+name = "import_validate"
+path = "src/bin/import_validate.rs"
+
+[[bin]]
 name = "parity"
 path = "src/bin/parity.rs"
 
@@ -35,6 +39,8 @@ thiserror = "2"
 unicode-normalization = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
 webp = { version = "0.3", default-features = false }
+regex = "1"
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tempfile = "3"

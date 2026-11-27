@@ -24,12 +24,30 @@ pub fn utc_stamp(secs: u64) -> String {
     format!("{y:04}{mo:02}{d:02}-{h:02}{m:02}{s:02}")
 }
 
-fn now_stamp() -> String {
-    let secs = std::time::SystemTime::now()
+/// `YYYY-MM-DDTHH:MM:SSZ` (UTC) for the given Unix seconds.
+pub fn iso_utc(secs: u64) -> String {
+    let s = utc_stamp(secs); // YYYYMMDD-HHMMSS
+    format!(
+        "{}-{}-{}T{}:{}:{}Z",
+        &s[0..4],
+        &s[4..6],
+        &s[6..8],
+        &s[9..11],
+        &s[11..13],
+        &s[13..15]
+    )
+}
+
+/// Segundos desde la época Unix (0 si el reloj es anterior).
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
-    utc_stamp(secs)
+        .unwrap_or(0)
+}
+
+fn now_stamp() -> String {
+    utc_stamp(now_secs())
 }
 
 fn db_err(msg: &str, e: impl std::fmt::Display) -> AppError {
@@ -119,6 +137,7 @@ mod tests {
         assert_eq!(utc_stamp(951_782_400), "20000229-000000");
         assert_eq!(utc_stamp(1_700_000_000), "20231114-221320");
         assert_eq!(utc_stamp(1_793_000_000 + 3661), "20261026-083421");
+        assert_eq!(iso_utc(1_700_000_000), "2023-11-14T22:13:20Z");
     }
 
     #[test]

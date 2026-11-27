@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::models::*;
 use crate::settings::Settings;
-use crate::{backup, db, images, migrate, repo, write};
+use crate::{backup, db, images, importer, migrate, repo, write};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -179,6 +179,8 @@ pub struct AppState {
     inner: RwLock<Result<Ready, AppError>>,
     settings: Mutex<Settings>,
     settings_path: Mutex<Option<PathBuf>>,
+    /// `app_data_dir` (historial de importaciones). `None` en tests que no lo fijan.
+    data_dir: Mutex<Option<PathBuf>>,
 }
 
 impl AppState {
@@ -187,7 +189,21 @@ impl AppState {
             inner: RwLock::new(inner),
             settings: Mutex::new(Settings::default()),
             settings_path: Mutex::new(None),
+            data_dir: Mutex::new(None),
         }
+    }
+
+    pub fn set_data_dir(&self, dir: PathBuf) {
+        if let Ok(mut d) = self.data_dir.lock() {
+            *d = Some(dir);
+        }
+    }
+
+    pub fn history_path(&self) -> Option<PathBuf> {
+        self.data_dir
+            .lock()
+            .ok()
+            .and_then(|d| d.as_ref().map(|d| d.join(importer::HISTORY_FILE)))
     }
 
     /// Injects an already-open `Ready` (tests); settings are not persisted.
@@ -547,4 +563,88 @@ pub fn run_migrations_sync(ready: &Ready) -> Result<MigrationRun, AppError> {
         applied,
         backup_path,
     })
+}
+
+// ------------------------------------------------------------------ Fase 6: importador
+
+/// Analiza `root` (solo lectura: nombres de entradas) y devuelve la vista previa. Emite progreso
+/// por `on_progress`; se cancela con `cancel_scan`.
+#[tauri::command]
+pub async fn scan_import(
+    state: State<'_, AppState>,
+    root: String,
+    on_progress: tauri::ipc::Channel<importer::ScanProgress>,
+) -> Result<importer::ImportPreview, AppError> {
+    let ready = state.ready()?;
+    let root_path = PathBuf::from(root.trim());
+    let guard = importer::ScanGuard::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let cancel = guard.cancel_flag();
+        let _guard = guard;
+        let raw = importer::scan_tree(&root_path, cancel, &mut |p| {
+            let _ = on_progress.send(p.clone());
+        })?;
+        if raw.cancelled {
+            return Ok(importer::ImportPreview {
+                root: root_path.to_string_lossy().into_owned(),
+                items: vec![],
+                defaults: Default::default(),
+                counts: Default::default(),
+                cancelled: true,
+                truncated: false,
+                scanned: raw.scanned,
+                unreadable: raw.unreadable,
+            });
+        }
+        let conn = ready.lock_conn()?;
+        importer::build_preview(&conn, &root_path.to_string_lossy(), raw)
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn cancel_scan() -> Result<(), AppError> {
+    importer::request_cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn run_import(
+    state: State<'_, AppState>,
+    req: importer::ImportRequest,
+) -> Result<importer::ImportResult, AppError> {
+    let ready = state.ready()?;
+    let history = state.history_path();
+    tauri::async_runtime::spawn_blocking(move || {
+        importer::run_import_sync(&ready, &req, history.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn get_import_history(
+    state: State<'_, AppState>,
+) -> Result<Vec<importer::HistoryEntry>, AppError> {
+    let Some(path) = state.history_path() else {
+        return Ok(vec![]);
+    };
+    let key = importer::db_key(&state.ready()?);
+    tauri::async_runtime::spawn_blocking(move || importer::read_history(&path, key.as_deref(), 20))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))
+}
+
+#[tauri::command]
+pub async fn undo_last_import(
+    state: State<'_, AppState>,
+) -> Result<importer::UndoResult, AppError> {
+    let ready = state.ready()?;
+    let path = state
+        .history_path()
+        .ok_or_else(|| AppError::NotFound("No hay historial de importaciones.".into()))?;
+    tauri::async_runtime::spawn_blocking(move || importer::undo_last_import_sync(&ready, &path))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
 }

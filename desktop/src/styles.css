@@ -183,3 +183,13 @@ button.danger:hover:not(:disabled) { background: var(--danger, #d33); color: #ff
 .cover-drop { display: grid; justify-items: center; gap: .4rem; padding: .5rem; border: 2px dashed var(--border, #8886); border-radius: 8px; }
 .cover-drop.over, .cover-drop:focus-visible { border-color: var(--accent, #4a8cff); }
 .cover-drop img { max-width: 100%; max-height: 220px; border-radius: 8px; object-fit: contain; }
+
+.import-dialog { width: min(1100px, 100%); }
+.import-controls { flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.import-scroll { max-height: 45vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.import-row { display: grid; grid-template-columns: 4.5rem minmax(14rem, 3fr) 9rem 8rem 9rem minmax(8rem, 2fr); gap: 8px; align-items: center; padding: 4px 8px; min-height: 44px; box-sizing: border-box; }
+.import-head { font-weight: 600; color: var(--muted); font-size: .85rem; min-height: 0; }
+.import-title { display: flex; flex-direction: column; min-width: 0; }
+.import-title input, .import-row select { width: 100%; box-sizing: border-box; }
+.import-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.import-progress { margin: 8px 0; }

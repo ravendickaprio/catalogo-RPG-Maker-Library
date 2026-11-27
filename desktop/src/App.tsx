@@ -4,6 +4,7 @@ import type { AppError, GameDetail as Detail, LibraryInfo, SessionInfo, SortKey,
 import CommandPalette from "./components/CommandPalette";
 import ConfirmDialog from "./components/ConfirmDialog";
 import SettingsDialog from "./components/SettingsDialog";
+import ImportDialog from "./components/ImportDialog";
 import GameDetail, { type DetailCommand } from "./components/GameDetail";
 import GameGallery from "./components/GameGallery";
 import GameList from "./components/GameList";
@@ -40,6 +41,7 @@ export default function App() {
   const [vocab, setVocab] = useState<Vocabulary | null>(null);
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [command, setCommand] = useState<DetailCommand | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const dirtyRef = useRef(false);
@@ -240,6 +242,7 @@ export default function App() {
       { id: "new", label: "Nuevo juego", run: startCreate },
       { id: "edit", label: "Editar juego seleccionado", run: () => sendCommand("edit") },
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
+      { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
       { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
       { id: "view-list", label: "Vista lista", run: () => setView("list") },
       { id: "view-gallery", label: "Vista galería", run: () => setView("gallery") },
@@ -319,6 +322,9 @@ export default function App() {
         </label>
         <button type="button" className="primary" onClick={startCreate} title={readOnly ? "Modo solo lectura" : "Nuevo juego (Ctrl+N)"} disabled={readOnly}>
           Nuevo juego
+        </button>
+        <button type="button" onClick={() => setImportOpen(true)} title="Importar juegos desde una carpeta">
+          Importar…
         </button>
         <button type="button" onClick={() => setSettingsOpen(true)} title="Ajustes de la base de datos">
           Ajustes
@@ -401,6 +407,17 @@ export default function App() {
         </main>
       </div>
       {suggestOpen && <SuggestionDialog onClose={() => setSuggestOpen(false)} onShowInList={locateGame} />}
+      {importOpen && (
+        <ImportDialog
+          vocab={vocab}
+          readOnly={readOnly}
+          onClose={() => setImportOpen(false)}
+          onChanged={() => {
+            afterWrite();
+            setToast("Biblioteca actualizada");
+          }}
+        />
+      )}
       {settingsOpen && (
         <SettingsDialog
           session={session}

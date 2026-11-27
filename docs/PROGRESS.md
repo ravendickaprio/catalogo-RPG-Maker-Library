@@ -157,4 +157,42 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - Un GIF animado conserva solo el primer fotograma.
 - `get_cover` queda sin uso en la UI.
 
-## Fase 6 — Importador (en curso, ADR-015)
+## Fase 6 — Importador ✅ (2026-11-27)
+
+**Implementación.** Se retomó el WIP `f38577f`: el backend compilaba, pero el parser rendía peor que el legacy con los datos reales. Trabajaron un auditor Haiku (revisión independiente del backend), un Sonnet para el backend (parser, arreglos y tests de integración) y otro Sonnet para el frontend. Después, cuatro revisores de limpieza (reutilización, simplificación, eficiencia y altitud) y un Sonnet que aplicó lo aprobado. El coordinador validó y documentó. Contrato en `CONTRACTS.md`, sección Fase 6.
+- **Parser:**
+  - el `_` termina el código;
+  - el estado sale de una palabra F/P dentro de corchetes (`[P bug]`, `[Demo F]`);
+  - el idioma se busca en el nombre completo.
+- **Backend:**
+  - análisis cancelable con progreso por `Channel`;
+  - vista previa con duplicados contra la DB y dentro del lote;
+  - importación en una transacción con revalidación y backup;
+  - historial JSONL **ligado a la DB abierta**;
+  - deshacer serializado con el bloqueo de escritura, que solo borra lo que no cambió;
+  - `write::delete_game_row` compartido;
+  - se añade `tauri-plugin-dialog` con solo `dialog:allow-open`.
+- **Frontend:**
+  - diálogo «Importar…» (botón y paleta) con selector de carpeta o ruta escrita;
+  - progreso y botón Cancelar;
+  - tabla editable (virtualizada a partir de 300 filas) con filtros y valores por defecto de página y tipo;
+  - confirmación y resumen con omitidos, backup y avisos;
+  - pestaña Historial con «Deshacer última importación»;
+  - en modo solo lectura se puede analizar, pero no importar ni deshacer.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `import_validate` (copia de la DB real, 1159 filas), legacy / antes / ahora | estado 1158 / 1142 / **1156**; idioma 1069 / 1065 / **1069**; código normalizado 1136 / 1056 / **1136**. Solo quedan 3 diferencias intencionales (ver CONTRACTS) |
+| Añadir `ENG` como inglés (descartado) | idioma bajaba de 1069 a 1047: la DB guarda la mayoría de los `_ENG` como Japonés. Se respeta el criterio existente |
+| `cargo test` | 34 + 12 import + 7 IPC + 26 + 21: **100 ok** (1 bench ignorado) |
+| clippy `-D warnings`, `fmt --check`, `npm test` (68), typecheck, `tauri build --no-bundle` | ok |
+| Extremo a extremo sobre una copia de la DB real (API del backend, carpeta con nombres sintéticos) | 3 nuevos, 1 duplicado por código real y 1 sin código. Valores por defecto `ryuugames`/`RPG`. Inserta los ids 1161–1163 con backup previo; FTS los encuentra; `integrity_check` ok. `sqlite3` de Python lee las filas, y `juegos_busqueda` coincide con `juegos`. Deshacer borra 3 y vuelven a quedar 1160. El hash de `juegos.db` no cambia |
+
+### Pendientes
+- No se probó en la ventana real (selector nativo, progreso y tabla virtualizada), porque esta sesión no controla la GUI. Los flujos están cubiertos con tests simulados y extremo a extremo por la API.
+- `cancel_scan` no se asocia a un análisis concreto: un clic tardío podría cancelar el siguiente.
+- La comprobación de duplicados en la importación hace una consulta por elemento, aceptable hasta unos miles de elementos.
+- No verificado en Linux (el plugin de diálogo usa GTK mediante `rfd`).
+
+## Fase 7 — Centro de mantenimiento (ADR-016)

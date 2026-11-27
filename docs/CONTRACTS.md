@@ -190,3 +190,45 @@ Nuevos `AppError.kind`: `"Conflict" | "DuplicateCode" | "ReadOnly" | "Busy"`. `D
 ### Frontend
 - `coverUrl(id, tag)` y un contador por id (`invalidateCover`) más una época global (`clearCoverCache`) forman la etiqueta `r`. Se invalida tras `set_cover`/`remove_cover`, un refresco externo, cambio de DB y migraciones. El LRU base64 se retiró; el webview gestiona la memoria de las imágenes (`loading="lazy"`, `decoding="async"`).
 - Edición: selector de archivo, arrastrar y soltar, y pegar (Ctrl+V con una imagen en el portapapeles mientras el formulario de edición está abierto). La portada se guarda al instante, independiente de «Guardar». En «Nuevo juego» la sección aparece tras crear el juego.
+
+## Fase 6 — Importador (ADR-015)
+
+### Comandos nuevos
+| Comando | Entrada | Retorno | Notas |
+|---|---|---|---|
+| `scan_import` | `{ root: string, onProgress: Channel<ScanProgress> }` | `ImportPreview` | Solo lectura (nombres de entradas). Un único análisis a la vez (`InvalidInput` si ya hay uno). Carpeta inexistente → `InvalidInput`. Cancelado → `cancelled: true` e `items: []` |
+| `cancel_scan` | — | `null` | Pide detener el análisis en curso; sin efecto si no hay ninguno |
+| `run_import` | `{ req: ImportRequest }` | `ImportResult` | Backup de sesión + un único `BEGIN IMMEDIATE`. Revalida cada elemento y vuelve a comprobar duplicados (código y ruta) dentro de la transacción; los inválidos o duplicados se omiten con motivo, no abortan el lote. Solo lectura → `ReadOnly` |
+| `get_import_history` | — | `HistoryEntry[]` | Últimas 20 **de la DB abierta**, de la más reciente a la más antigua |
+| `undo_last_import` | — | `UndoResult` | Borra solo los ids de la última importación cuya `revision` no cambió; los demás van en `kept` con motivo. Solo considera importaciones de la DB abierta (campo `db` del registro: ruta canónica normalizada; los registros sin `db` nunca se deshacen). Ya deshecha → `InvalidInput`; ninguna de esta DB → `NotFound`. La lectura del historial, la comprobación y el borrado se serializan con el bloqueo de escritura. Si falla anotar el deshacer tras el commit → `Ok` con `warning` |
+
+### Tipos (camelCase)
+```ts
+type ScanProgress = { scanned: number; candidates: number; currentDir: string };
+type ParsedName = { titulo: string; codigo: string; estado: string; idioma: string };
+type ItemStatus = "nuevo" | "duplicado_codigo" | "duplicado_ruta" | "duplicado_lote" | "sin_codigo";
+type ImportItem = { key: string; kind: "archivo" | "carpeta"; path: string; name: string;
+  parsed: ParsedName; status: ItemStatus; duplicateOf: { id: number | null; titulo: string } | null };
+type ImportPreview = { root: string; items: ImportItem[]; defaults: { pagina: string; tipo: string };
+  counts: { total; nuevo; duplicadoCodigo; duplicadoRuta; duplicadoLote; sinCodigo: number };
+  cancelled: boolean; truncated: boolean; scanned: number; unreadable: number };
+type ImportRequest = { root: string; pagina: string; tipo: string;
+  items: { key: string; path: string; titulo: string; codigo: string; estado: string; idioma: string }[] };
+type ImportResult = { inserted: { id: number; titulo: string; codigo: string }[];
+  skipped: { key: string; reason: string }[]; backupPath: string | null; importId: string | null; warning: string | null };
+type HistoryEntry = { id: string; timestamp: string; root: string; insertedCount: number; skippedCount: number;
+  backupPath: string | null; undone: boolean; undoneAt: string | null };
+type UndoResult = { importId: string; deleted: number; kept: { id: number; titulo: string; reason: string }[]; backupPath: string | null; warning: string | null };
+```
+
+### Reglas
+- Los registros nuevos: `descripcion = ''`, `imagen = NULL`, `puntuacion = 0`, sin tags; `ruta` se guarda tal cual. FTS y `juegos_busqueda` se sincronizan por los triggers existentes.
+- Límites: 20 000 candidatos por análisis (`truncated`), 50 000 elementos por importación; título ≤ 300, código ≤ 100, estado/idioma ≤ 50, página ≤ 100, tipo ≤ 50 (vacío → `Otro`), ruta ≤ 1000 caracteres.
+- Historial: `app_data_dir/import-history.jsonl`, una línea JSON por importación (`kind: "import"`) o deshacer (`kind: "undo"`); las líneas corruptas se ignoran. Si no se puede escribir, la importación queda hecha y `warning` lo explica (no se podrá deshacer).
+- Selector de carpeta: `@tauri-apps/plugin-dialog` `open({ directory: true })`, único permiso `dialog:allow-open`. También se acepta escribir la ruta.
+
+### Parser (`importer::parse_name`), ajustado tras validar con la DB real
+- **Código:** `RY[- _]+` seguido de `[A-Z0-9][A-Z0-9-]*`; el `_` **termina** el código (`RY-3713480_R18` → `RY-3713480`, `RY-RJ…_ENG` → `RY-RJ…`), salvo que el cuerpo sea una sola letra seguida de `_` y dígitos (`RY-d_642996` → `RY-D_642996`, corrige el bug del legacy). Se quitan los `-` finales; los segmentos con guion como `-EN`, `-V1` o `-EN-CN` **se conservan** en el código, porque así los guarda la DB real (quitarlos costaba 5 aciertos). Para el título se elimina todo el tramo pegado al código hasta el siguiente espacio, `[` o `(` (los sufijos `_R18`, `_ENG`, `_RJ…` no son título).
+- **Estado:** un grupo entre corchetes cuyas palabras incluyan `F` (→ Terminado) o, si no, `P` (→ Empezado), sin distinguir mayúsculas: `[F]`, `[P bug]`, `[Demo F]`, `[P casi F]` (→ Terminado, como guarda la DB). O bien `F`/`P` como primer token fuera de corchetes. `F` tiene prioridad sobre `P`.
+- **Idioma:** los tokens de idioma se buscan en el nombre completo (incluido lo pegado al código: `RY-1_EN-this`, `RY-1-EN-CN`).
+- **Validación (`import_validate` sobre una copia, 1159 filas con ruta)** — legacy / nuevo: estado 1158/1156, idioma 1069/1069, código exacto 1136/1135, código normalizado 1136/1136. Diferencias intencionales (3): `[F] RY-d_642996` → `RY-D_642996` (la DB tiene el `RY-D` del bug); `[F]_RY-…` y `[F]RY-…` → Terminado (la DB tiene Sin empezar porque el legacy no veía la marca pegada). El centro de mantenimiento (Fase 7) las mostrará como estado inconsistente.
