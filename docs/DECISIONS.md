@@ -96,3 +96,12 @@ Formato: contexto → decisión → consecuencias. Fecha de referencia: 2026-11-
   - normalización NFC.
 - Los tests y benchmarks se siguen ejecutando sobre copias o DB sintéticas.
 **Consecuencias.** La app Python sigue siendo compatible: solo se escriben las columnas existentes y los triggers mantienen la búsqueda. `backups/` se añade a `.gitignore`.
+
+## ADR-013 — Cierre de la Fase 4: migración v1 y ajuste del orden por código
+- **v1 implementada:** `ix_juegos_titulo_nocase` + `ANALYZE`. Se registra en `app_metadata('desktop_schema_version')` y solo se aplica cuando el usuario lo pide desde Ajustes, con backup previo (ADR-009).
+- **Orden por código:** la consulta de página usa `FROM juegos j NOT INDEXED LEFT JOIN juegos_busqueda bq …`, para que el planificador no recorra el índice de título.
+- **Medición** en una copia sintética de 50k registros (p50, sin índice → con índice):
+  - orden por código: 73,5 → 49,3 ms (antes del ajuste empeoraba: 72,6 → 207,6 ms);
+  - orden por título: 60,8 → 2,9 ms;
+  - página profunda: 79,8 → 3,1 ms.
+- Ningún escenario empeora más allá del ruido. Con esto se cierra la decisión diferida en el ADR-011.

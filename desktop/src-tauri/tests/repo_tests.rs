@@ -388,7 +388,7 @@ fn fallback_without_fts_tables() {
     assert_eq!(titles(&r), vec!["Zeta Quest"]);
     let r = repo::search(&c, &req(""), false).unwrap();
     assert_eq!(r.total, 6);
-    let info = repo::library_info(&c, "nofts.db").unwrap();
+    let info = repo::library_info(&c, "nofts.db", true).unwrap();
     assert!(!info.fts_available && !info.fts_in_sync);
     assert_eq!(info.total, 6);
     let s = repo::suggest(&c, &SuggestRequest::default()).unwrap();
@@ -399,7 +399,7 @@ fn fallback_without_fts_tables() {
 fn library_info_values() {
     let (_d, c) = open_std();
     assert_eq!(repo::detect_fts(&c).unwrap(), (true, true));
-    let i = repo::library_info(&c, "t.db").unwrap();
+    let i = repo::library_info(&c, "t.db", true).unwrap();
     assert_eq!(i.db_file_name, "t.db");
     assert!(i.read_only);
     assert_eq!(i.total, 6);
@@ -562,7 +562,7 @@ fn read_only_guarantee() {
         repo::search(&c, &req("a"), true).unwrap();
         repo::get_game(&c, 1).unwrap();
         repo::get_cover(&c, 1).unwrap();
-        repo::library_info(&c, "ro.db").unwrap();
+        repo::library_info(&c, "ro.db", true).unwrap();
     }
     assert!(c.execute("UPDATE juegos SET estado='x'", []).is_err());
     assert!(c.execute("DELETE FROM juegos", []).is_err());
@@ -579,7 +579,7 @@ fn read_only_guarantee() {
 }
 
 #[test]
-fn db_path_guard() {
+fn bench_path_guard_only_for_tools() {
     assert!(db::check_path_allowed(Path::new("a/juegos.db"), false).is_err());
     assert!(db::check_path_allowed(Path::new("a/JUEGOS.DB"), false).is_err());
     assert!(matches!(
@@ -646,7 +646,7 @@ fn library_info_tags_counts_and_order() {
             .unwrap();
     }
     let c = db::open_read_only(&p).unwrap();
-    let i = repo::library_info(&c, "tg.db").unwrap();
+    let i = repo::library_info(&c, "tg.db", true).unwrap();
     let got: Vec<(&str, i64)> = i.tags.iter().map(|t| (t.value.as_str(), t.count)).collect();
     assert_eq!(got, vec![("Alfa", 2), ("zeta", 1)]);
 }

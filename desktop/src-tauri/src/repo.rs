@@ -16,7 +16,7 @@ coalesce(j.idioma,''), coalesce(j.tipo,''), coalesce(j.pagina,''), coalesce(j.pu
 const ELIGIBLE: &str =
     "lower(trim(coalesce(estado,''), ' ' || char(9) || char(10) || char(13))) <> 'terminado'";
 
-fn table_exists(conn: &Connection, name: &str) -> Result<bool, AppError> {
+pub fn table_exists(conn: &Connection, name: &str) -> Result<bool, AppError> {
     let n: i64 = conn.query_row(
         "SELECT count(*) FROM sqlite_master WHERE type IN ('table','view') AND name = ?",
         [name],
@@ -48,7 +48,11 @@ fn counts(conn: &Connection, sql: &str) -> Result<Vec<CountItem>, AppError> {
 }
 
 /// One scan of `juegos` (columns before `imagen` only) gives total, estados and idiomas.
-pub fn library_info(conn: &Connection, db_file_name: &str) -> Result<LibraryInfo, AppError> {
+pub fn library_info(
+    conn: &Connection,
+    db_file_name: &str,
+    read_only: bool,
+) -> Result<LibraryInfo, AppError> {
     let available = table_exists(conn, "juegos_fts")? && table_exists(conn, "juegos_busqueda")?;
     let mut estados_m: std::collections::HashMap<String, i64> = Default::default();
     let mut idiomas_m: std::collections::HashMap<String, i64> = Default::default();
@@ -87,7 +91,7 @@ pub fn library_info(conn: &Connection, db_file_name: &str) -> Result<LibraryInfo
     let sqlite_version: String = conn.query_row("SELECT sqlite_version()", [], |r| r.get(0))?;
     Ok(LibraryInfo {
         db_file_name: db_file_name.to_string(),
-        read_only: true,
+        read_only,
         total,
         fts_available: available,
         fts_in_sync,
@@ -281,14 +285,20 @@ pub fn build_search_sql(
     let count_sql = format!("SELECT count(*) FROM juegos j{where_sql}");
     // Phase 1 (ids only) is possible when juegos_busqueda exists; otherwise single phase.
     let two_phase = has_busqueda;
-    let join = if two_phase && req.sort == SortKey::Code {
-        " LEFT JOIN juegos_busqueda bq ON bq.juego_id = j.id"
+    // Code sort: `NOT INDEXED` keeps the planner from driving the loop through the title
+    // index (ix_juegos_titulo_nocase, ADR-011/migration v1) and probing `bq` per row, which
+    // measured 74 -> 189 ms at 50k rows. Rowid lookups (`j.id IN (...)`) stay available.
+    let (from_j, join) = if two_phase && req.sort == SortKey::Code {
+        (
+            "juegos j NOT INDEXED",
+            " LEFT JOIN juegos_busqueda bq ON bq.juego_id = j.id",
+        )
     } else {
-        ""
+        ("juegos j", "")
     };
     let cols = if two_phase { "j.id" } else { SUMMARY_COLS };
     let page_sql = format!(
-        "SELECT {cols} FROM juegos j{join}{where_sql} ORDER BY {} LIMIT ? OFFSET ?",
+        "SELECT {cols} FROM {from_j}{join}{where_sql} ORDER BY {} LIMIT ? OFFSET ?",
         order_by(req.sort, two_phase)
     );
     Ok(SearchSql {
@@ -349,12 +359,62 @@ pub fn search(
     })
 }
 
+/// FNV-1a 64-bit. Every field is length-prefixed (u64 LE) so concatenations cannot collide.
+struct Fnv(u64);
+
+impl Fnv {
+    fn new() -> Self {
+        Fnv(0xcbf2_9ce4_8422_2325)
+    }
+    fn bytes(&mut self, b: &[u8]) {
+        for &x in b {
+            self.0 ^= x as u64;
+            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    fn field(&mut self, b: &[u8]) {
+        self.bytes(&(b.len() as u64).to_le_bytes());
+        self.bytes(b);
+    }
+}
+
+/// Fingerprint of the editable record state (contract Phase 4): titulo, descripcion, estado,
+/// idioma, ruta, codigo, pagina, tipo, puntuacion, length(imagen) and tags (NOCASE order).
+pub fn revision_of(
+    s: &GameSummary,
+    descripcion: &str,
+    ruta: &str,
+    img_len: i64,
+    tags: &[String],
+) -> String {
+    let mut h = Fnv::new();
+    for t in [
+        &s.titulo,
+        descripcion,
+        &s.estado,
+        &s.idioma,
+        ruta,
+        &s.codigo,
+        &s.pagina,
+        &s.tipo,
+    ] {
+        h.field(t.as_bytes());
+    }
+    h.field(&s.puntuacion.to_bits().to_le_bytes());
+    h.field(&img_len.to_le_bytes());
+    h.field(&(tags.len() as u64).to_le_bytes());
+    for t in tags {
+        h.field(t.as_bytes());
+    }
+    format!("{:016x}", h.0)
+}
+
 pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
     if id <= 0 {
         return Err(AppError::InvalidInput("id debe ser > 0.".into()));
     }
     let sql = format!(
-        "SELECT {SUMMARY_COLS}, coalesce(j.descripcion,''), coalesce(j.ruta,'') FROM juegos j WHERE j.id = ?"
+        "SELECT {SUMMARY_COLS}, coalesce(j.descripcion,''), coalesce(j.ruta,''),          coalesce(length(j.imagen),0) FROM juegos j WHERE j.id = ?"
     );
     let row = conn
         .query_row(&sql, [id], |r| {
@@ -362,23 +422,25 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameDetail, AppError> {
                 summary_from_row(r)?,
                 r.get::<_, String>(9)?,
                 r.get::<_, String>(10)?,
+                r.get::<_, i64>(11)?,
             ))
         })
         .optional()?;
-    let (summary, descripcion, ruta) =
+    let (summary, descripcion, ruta, img_len) =
         row.ok_or_else(|| AppError::NotFound(format!("No existe el juego con id {id}.")))?;
     let mut st = conn.prepare(
-        "SELECT t.nombre FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id \
-         WHERE jt.juego_id = ? ORDER BY t.nombre COLLATE NOCASE",
+        "SELECT t.nombre FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id          WHERE jt.juego_id = ? ORDER BY t.nombre COLLATE NOCASE",
     )?;
     let tags = st
         .query_map([id], |r| r.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
+    let revision = revision_of(&summary, &descripcion, &ruta, img_len, &tags);
     Ok(GameDetail {
         summary,
         descripcion,
         ruta,
         tags,
+        revision,
     })
 }
 

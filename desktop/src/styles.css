@@ -156,3 +156,25 @@ button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); fi
   .side-scrim { display: block; position: absolute; inset: 0; z-index: 4; background: rgba(0, 0, 0, .35); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* Phase 4: forms, confirm, settings */
+.badge-edit { background: var(--done-bg); color: var(--done-fg); }
+.confirm-backdrop { z-index: 30; }
+.confirm { width: min(460px, 100%); }
+.game-form { display: flex; flex-direction: column; gap: 10px; }
+.form-row { display: flex; flex-direction: column; gap: 3px; }
+.form-row label, .form-row > span { color: var(--muted); font-size: .85rem; }
+.form-row input, .form-row select, .form-row textarea { width: 100%; box-sizing: border-box; }
+.form-row textarea { resize: vertical; min-height: 4.5em; overflow: hidden; }
+.form-row [aria-invalid="true"] { border-color: var(--danger, #d33); outline-color: var(--danger, #d33); }
+.field-error { color: var(--danger, #d33); margin: 2px 0 0; font-size: .82rem; }
+.inline-row { display: flex; gap: 6px; }
+.inline-row input { flex: 1; }
+.chip-x { border: 0; background: transparent; cursor: pointer; padding: 0 2px; color: inherit; }
+.tag-editor .tags { margin: 0 0 6px; }
+.detail-actions { justify-content: flex-start; }
+button.danger { border-color: var(--danger, #d33); color: var(--danger, #d33); }
+button.danger:hover:not(:disabled) { background: var(--danger, #d33); color: #fff; }
+.settings section { margin: 10px 0; }
+.settings .check { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.path-text { word-break: break-all; }

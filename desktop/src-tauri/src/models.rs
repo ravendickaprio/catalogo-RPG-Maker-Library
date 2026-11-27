@@ -59,6 +59,8 @@ pub struct GameDetail {
     pub descripcion: String,
     pub ruta: String,
     pub tags: Vec<String>,
+    /// Huella FNV-1a 64 (hex) del registro; detecta modificaciones externas (Fase 4).
+    pub revision: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +105,75 @@ pub struct Suggestion {
     pub total_count: i64,
 }
 
+/// Datos editables de un juego (Fase 4). `imagen` no forma parte (portadas: Fase 5).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameInput {
+    pub titulo: String,
+    pub descripcion: String,
+    pub estado: String,
+    pub idioma: String,
+    pub ruta: String,
+    pub codigo: String,
+    pub pagina: String,
+    pub tipo: String,
+    pub puntuacion: f64,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WriteOptions {
+    pub allow_duplicate_code: bool,
+    pub expected_revision: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Vocabulary {
+    pub estados: Vec<String>,
+    pub idiomas: Vec<String>,
+    pub paginas: Vec<String>,
+    pub tipos: Vec<String>,
+    pub puntuaciones: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfo {
+    pub db_file_name: String,
+    pub db_dir: String,
+    pub read_only: bool,
+    pub last_backup: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BackupResult {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingMigration {
+    pub version: i64,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MigrationStatus {
+    pub current: i64,
+    pub latest: i64,
+    pub pending: Vec<PendingMigration>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationRun {
+    pub applied: Vec<i64>,
+    /// Vacío si no había migraciones pendientes (no se hace backup).
+    pub backup_path: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,10 +212,26 @@ mod tests {
             descripcion: "".into(),
             ruta: "".into(),
             tags: vec![],
+            revision: "0".into(),
         };
         let v = serde_json::to_value(d).unwrap();
         assert_eq!(v["hasCover"], true);
         assert_eq!(v["id"], 1);
         assert!(v.get("tags").is_some());
+    }
+
+    #[test]
+    fn write_options_defaults_and_input_shape() {
+        let o: WriteOptions = serde_json::from_str("{}").unwrap();
+        assert!(!o.allow_duplicate_code && o.expected_revision.is_none());
+        let o: WriteOptions =
+            serde_json::from_str(r#"{"allowDuplicateCode":true,"expectedRevision":"ab"}"#).unwrap();
+        assert!(o.allow_duplicate_code);
+        assert_eq!(o.expected_revision.as_deref(), Some("ab"));
+        let g: GameInput = serde_json::from_str(
+            r#"{"titulo":"t","descripcion":"","estado":"e","idioma":"i","ruta":"","codigo":"","pagina":"","tipo":"","puntuacion":1.5}"#,
+        )
+        .unwrap();
+        assert!(g.tags.is_empty());
     }
 }

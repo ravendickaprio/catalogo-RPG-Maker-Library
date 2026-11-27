@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getLibraryInfo, normalizeError } from "./api/client";
-import type { AppError, LibraryInfo, SortKey } from "./api/types";
+import { getLibraryInfo, getSessionInfo, getVocabulary, normalizeError } from "./api/client";
+import type { AppError, GameDetail as Detail, LibraryInfo, SessionInfo, SortKey, Vocabulary } from "./api/types";
 import CommandPalette from "./components/CommandPalette";
-import GameDetail from "./components/GameDetail";
+import ConfirmDialog from "./components/ConfirmDialog";
+import SettingsDialog from "./components/SettingsDialog";
+import GameDetail, { type DetailCommand } from "./components/GameDetail";
 import GameGallery from "./components/GameGallery";
 import GameList from "./components/GameList";
 import SearchBar from "./components/SearchBar";
@@ -11,7 +13,7 @@ import SuggestionDialog from "./components/SuggestionDialog";
 import { useExternalRefresh } from "./hooks/useExternalRefresh";
 import { useGameSearch } from "./hooks/useGameSearch";
 import { useTheme } from "./hooks/useTheme";
-import { clearCoverCache } from "./lib/coverCache";
+import { clearCoverCache, invalidateCover } from "./lib/coverCache";
 import type { PaletteAction } from "./lib/palette";
 import { PREF_SIDEBAR, PREF_VIEW, writePref } from "./lib/storage";
 import { THEMES, type Theme } from "./lib/theme";
@@ -34,6 +36,13 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const [toast, setToast] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [vocab, setVocab] = useState<Vocabulary | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [command, setCommand] = useState<DetailCommand | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const dirtyRef = useRef(false);
   const detailRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +55,22 @@ export default function App() {
       (e) => setInfoError(normalizeError(e)),
     );
   }, []);
+  const loadSession = useCallback(() => {
+    getSessionInfo().then(setSession, () => undefined);
+    getVocabulary().then(setVocab, () => undefined);
+  }, []);
   useEffect(loadInfo, [loadInfo]);
+  useEffect(loadSession, [loadSession]);
+  const readOnly = session?.readOnly ?? info?.readOnly ?? true;
+
+  /** Runs `action` now, or after the user confirms discarding unsaved edits. */
+  const guard = useCallback((action: () => void) => {
+    if (dirtyRef.current) setPendingAction(() => action);
+    else action();
+  }, []);
+  const onDirtyChange = useCallback((d: boolean) => {
+    dirtyRef.current = d;
+  }, []);
 
   const search = useGameSearch({ query, estado, idioma, tag, sort });
   const searchError = search.error;
@@ -68,10 +92,11 @@ export default function App() {
     useCallback(() => {
       clearCoverCache();
       loadInfo();
+      loadSession();
       reloadSearch();
       setRefreshTick((n) => n + 1);
       setToast("Biblioteca actualizada");
-    }, [loadInfo, reloadSearch]),
+    }, [loadInfo, loadSession, reloadSearch]),
   );
   useEffect(() => {
     if (!toast) return;
@@ -88,6 +113,21 @@ export default function App() {
 
   /** Shows a game in the list: clears filters, searches by code (or title) and selects it. */
   const locateGame = useCallback((game: { id: number; codigo: string; titulo: string }) => {
+    if (dirtyRef.current) {
+      setSuggestOpen(false);
+      setPendingAction(() => () => {
+        dirtyRef.current = false;
+        setCreating(false);
+        setEstado("");
+        setIdioma("");
+        setTag("");
+        setQuery(game.codigo.trim() ? game.codigo : game.titulo);
+        setSelectedId(game.id);
+        setFocusTick((n) => n + 1);
+      });
+      return;
+    }
+    setCreating(false);
     setEstado("");
     setIdioma("");
     setTag("");
@@ -97,6 +137,82 @@ export default function App() {
     setFocusTick((n) => n + 1);
   }, []);
 
+  const selectGame = useCallback(
+    (id: number | null) => {
+      if (id === selectedId && !creating) return;
+      guard(() => {
+        dirtyRef.current = false;
+        setCreating(false);
+        setSelectedId(id);
+      });
+    },
+    [guard, selectedId, creating],
+  );
+
+  const startCreate = useCallback(() => {
+    if (readOnly) {
+      setToast("Modo solo lectura: no se puede crear juegos");
+      return;
+    }
+    if (creating) return;
+    guard(() => {
+      dirtyRef.current = false;
+      setSelectedId(null);
+      setCreating(true);
+    });
+  }, [readOnly, creating, guard]);
+
+  /** Everything that depends on stored data is refreshed after a write. */
+  const afterWrite = useCallback(
+    (id?: number) => {
+      if (id != null) invalidateCover(id);
+      loadInfo();
+      getVocabulary().then(setVocab, () => undefined);
+      reloadSearch();
+    },
+    [loadInfo, reloadSearch],
+  );
+  const onSaved = useCallback(
+    (g: Detail, created: boolean) => {
+      afterWrite(g.id);
+      if (created) {
+        setCreating(false);
+        setSelectedId(g.id);
+      }
+      setToast(created ? "Juego creado" : "Cambios guardados");
+    },
+    [afterWrite],
+  );
+  const onDeleted = useCallback(
+    (id: number) => {
+      afterWrite(id);
+      setSelectedId(null);
+      setToast("Juego eliminado");
+    },
+    [afterWrite],
+  );
+  const onDbChanged = useCallback(
+    (i: LibraryInfo) => {
+      clearCoverCache();
+      dirtyRef.current = false;
+      setInfo(i);
+      setInfoError(null);
+      setCreating(false);
+      setSelectedId(null);
+      loadSession();
+      reloadSearch();
+      setRefreshTick((n) => n + 1);
+    },
+    [loadSession, reloadSearch],
+  );
+  const sendCommand = (kind: "edit" | "delete") => {
+    if (selectedId == null) {
+      setToast("Selecciona un juego primero");
+      return;
+    }
+    setCommand((c) => ({ kind, n: (c?.n ?? 0) + 1 }));
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -105,6 +221,9 @@ export default function App() {
       if (k === "k" || (k === "p" && e.shiftKey)) {
         e.preventDefault();
         setPaletteOpen(true);
+      } else if (k === "n" && !e.shiftKey) {
+        e.preventDefault();
+        startCreate();
       } else if (k === "1" || k === "2") {
         e.preventDefault();
         setView(k === "1" ? "list" : "gallery");
@@ -112,12 +231,16 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setView]);
+  }, [setView, startCreate]);
 
   const actions = useMemo<PaletteAction[]>(() => {
     const list: PaletteAction[] = [
       { id: "search", label: "Buscar…", run: () => setTimeout(() => searchRef.current?.focus(), 0) },
       { id: "suggest", label: "Juego sugerido del día", run: () => setSuggestOpen(true) },
+      { id: "new", label: "Nuevo juego", run: startCreate },
+      { id: "edit", label: "Editar juego seleccionado", run: () => sendCommand("edit") },
+      { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
+      { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
       { id: "view-list", label: "Vista lista", run: () => setView("list") },
       { id: "view-gallery", label: "Vista galería", run: () => setView("gallery") },
       ...THEMES.map((t) => ({ id: `theme-${t.value}`, label: `Tema: ${t.label}`, run: () => setTheme(t.value) })),
@@ -127,7 +250,8 @@ export default function App() {
       if (s.value) list.push({ id: `estado-${s.value}`, label: `Filtrar por estado ${s.value}`, run: () => setEstado(s.value) });
     }
     return list;
-  }, [info, setView, setTheme, clearFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info, setView, setTheme, clearFilters, startCreate, selectedId]);
 
   const listProps = {
     items: search.items,
@@ -136,9 +260,9 @@ export default function App() {
     elapsedMs: search.elapsedMs,
     strategy: search.strategy,
     selectedId,
-    onSelect: setSelectedId,
+    onSelect: selectGame,
     onOpen: (id: number) => {
-      setSelectedId(id);
+      selectGame(id);
       detailRef.current?.focus();
     },
     loadMore: search.loadMore,
@@ -165,7 +289,7 @@ export default function App() {
             <span className="db-name" title="Base de datos">
               {info.dbFileName}
             </span>
-            {info.readOnly && <span className="badge badge-ro">solo lectura</span>}
+            <span className={"badge " + (readOnly ? "badge-ro" : "badge-edit")}>{readOnly ? "solo lectura" : "edición"}</span>
             <span className="cell-muted">{info.total} juegos</span>
           </>
         )}
@@ -193,6 +317,12 @@ export default function App() {
             ))}
           </select>
         </label>
+        <button type="button" className="primary" onClick={startCreate} title={readOnly ? "Modo solo lectura" : "Nuevo juego (Ctrl+N)"} disabled={readOnly}>
+          Nuevo juego
+        </button>
+        <button type="button" onClick={() => setSettingsOpen(true)} title="Ajustes de la base de datos">
+          Ajustes
+        </button>
         <button type="button" onClick={() => setPaletteOpen(true)} title="Paleta de comandos (Ctrl+K)">
           Comandos
         </button>
@@ -244,10 +374,58 @@ export default function App() {
         </div>
         <main className="main">
           {view === "list" ? <GameList {...listProps} /> : <GameGallery {...listProps} />}
-          <GameDetail ref={detailRef} id={selectedId} reloadToken={refreshTick} onMissing={() => setSelectedId(null)} />
+          <GameDetail
+            ref={detailRef}
+            id={selectedId}
+            creating={creating}
+            readOnly={readOnly}
+            vocab={vocab}
+            tagSuggestions={(info?.tags ?? []).map((t) => t.value)}
+            reloadToken={refreshTick}
+            command={command}
+            onMissing={() => {
+              setSelectedId(null);
+              reloadSearch();
+            }}
+            onDirtyChange={onDirtyChange}
+            onSaved={onSaved}
+            onDeleted={onDeleted}
+            onCancelCreate={() => setCreating(false)}
+            onToast={setToast}
+          />
         </main>
       </div>
       {suggestOpen && <SuggestionDialog onClose={() => setSuggestOpen(false)} onShowInList={locateGame} />}
+      {settingsOpen && (
+        <SettingsDialog
+          session={session}
+          onClose={() => setSettingsOpen(false)}
+          onDbChanged={onDbChanged}
+          onSessionChanged={(s) => {
+            setSession(s);
+            loadInfo();
+          }}
+          onMigrated={() => {
+            clearCoverCache();
+            afterWrite();
+          }}
+        />
+      )}
+      {pendingAction && (
+        <ConfirmDialog
+          title="¿Descartar los cambios?"
+          confirmLabel="Descartar"
+          danger
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => {
+            const a = pendingAction;
+            setPendingAction(null);
+            a();
+          }}
+        >
+          <p>Tienes cambios sin guardar en el formulario. Si continúas, se perderán.</p>
+        </ConfirmDialog>
+      )}
       {paletteOpen && <CommandPalette actions={actions} onClose={() => setPaletteOpen(false)} />}
       {toast && (
         <div className="toast" role="status" aria-live="polite">

@@ -9,7 +9,7 @@ const mockInvoke = vi.mocked(invoke);
 
 const game = (id: number, titulo: string): GameDetail => ({
   id, titulo, codigo: `RJ${id}`, estado: "Sin empezar", idioma: "Español", tipo: "RPG", pagina: "p",
-  puntuacion: 3, hasCover: false, descripcion: "Una descripción larga", ruta: "C:/x", tags: ["fantasía"],
+  puntuacion: 3, hasCover: false, descripcion: "Una descripción larga", ruta: "C:/x", tags: ["fantasía"], revision: "r1",
 });
 
 function setup(responses: Suggestion[]) {

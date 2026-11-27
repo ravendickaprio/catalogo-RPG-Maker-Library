@@ -41,9 +41,7 @@ fn fixture_db(dir: &TempDir) -> PathBuf {
 
 fn setup(path: &Path) -> (tauri::App<MockRuntime>, WebviewWindow<MockRuntime>) {
     let conn = db::open_read_only(path).unwrap();
-    let state = AppState {
-        inner: Ok(Ready::new(conn, true, "ipc.db".into())),
-    };
+    let state = AppState::with_ready(Ready::new(conn, true, "ipc.db".into()));
     let app = app_builder(mock_builder(), state)
         .build(mock_context(noop_assets()))
         .unwrap();
@@ -170,9 +168,7 @@ fn ipc_contract_end_to_end_and_read_only() {
 
 #[test]
 fn ipc_config_error_is_reported() {
-    let state = AppState {
-        inner: Err(AppError::Config("sin base".into())),
-    };
+    let state = AppState::with_error(AppError::Config("sin base".into()));
     let app = app_builder(mock_builder(), state)
         .build(mock_context(noop_assets()))
         .unwrap();
@@ -219,4 +215,271 @@ fn check_data_version_detects_external_writes() {
     );
     let d = invoke(&w, "check_data_version", json!({})).unwrap();
     assert_eq!(d["changed"], false);
+}
+
+// ---------------------------------------------------------------- Fase 4 (escritura)
+
+fn setup_rw(path: &Path) -> (tauri::App<MockRuntime>, WebviewWindow<MockRuntime>) {
+    let ready = Ready::open(path, false).unwrap();
+    let app = app_builder(mock_builder(), AppState::with_ready(ready))
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let w = WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    (app, w)
+}
+
+fn input(titulo: &str, codigo: &str) -> Value {
+    json!({
+        "titulo": titulo, "descripcion": "d", "estado": "Sin empezar", "idioma": "Español",
+        "ruta": "", "codigo": codigo, "pagina": "ryuugames", "tipo": "", "puntuacion": 2.5,
+        "tags": ["Nuevo", "nuevo", "x"]
+    })
+}
+
+#[test]
+fn ipc_write_commands_arg_shapes_and_flow() {
+    let dir = TempDir::new().unwrap();
+    let path = fixture_db(&dir);
+    let (_app, w) = setup_rw(&path);
+
+    let s = invoke(&w, "get_session_info", json!({})).unwrap();
+    assert_eq!(s["readOnly"], false);
+    assert_eq!(s["dbFileName"], "ipc.db");
+    assert!(s["lastBackup"].is_null());
+    assert!(s["dbDir"].as_str().unwrap().len() > 2);
+
+    let v = invoke(&w, "get_vocabulary", json!({})).unwrap();
+    assert_eq!(v["estados"][0], "Sin empezar");
+    assert_eq!(v["puntuaciones"][1], 0.5);
+    assert!(v["paginas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p == "ryuugames"));
+
+    // create: { input, opts }
+    let created = invoke(
+        &w,
+        "create_game",
+        json!({ "input": input("Nuevo Juego", "NJ-1"), "opts": {} }),
+    )
+    .unwrap();
+    assert_eq!(created["titulo"], "Nuevo Juego");
+    assert_eq!(created["tipo"], "Otro");
+    assert_eq!(created["tags"], json!(["Nuevo", "x"]));
+    let id = created["id"].as_i64().unwrap();
+    let rev = created["revision"].as_str().unwrap().to_string();
+    assert_eq!(rev.len(), 16);
+    assert!(invoke(&w, "get_session_info", json!({})).unwrap()["lastBackup"].is_string());
+
+    // info cache invalidated by the write
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["total"],
+        4
+    );
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["readOnly"],
+        false
+    );
+    // own writes are not "external changes"
+    assert_eq!(
+        invoke(&w, "check_data_version", json!({})).unwrap()["changed"],
+        false
+    );
+
+    // duplicate code -> DuplicateCode (mentions the other title); allowDuplicateCode -> ok
+    let dup = invoke(
+        &w,
+        "create_game",
+        json!({ "input": input("Otro", "nj_1"), "opts": { "allowDuplicateCode": false } }),
+    )
+    .unwrap_err();
+    assert_eq!(dup["kind"], "DuplicateCode");
+    assert!(dup["message"].as_str().unwrap().contains("Nuevo Juego"));
+    let ok = invoke(
+        &w,
+        "create_game",
+        json!({ "input": input("Otro", "nj_1"), "opts": { "allowDuplicateCode": true } }),
+    )
+    .unwrap();
+    let id2 = ok["id"].as_i64().unwrap();
+
+    // update: { id, input, opts }; missing revision -> InvalidInput; stale -> Conflict
+    let e = invoke(
+        &w,
+        "update_game",
+        json!({ "id": id, "input": input("Editado", "NJ-9"), "opts": {} }),
+    )
+    .unwrap_err();
+    assert_eq!(e["kind"], "InvalidInput");
+    let e = invoke(
+        &w,
+        "update_game",
+        json!({ "id": id, "input": input("Editado", "NJ-9"), "opts": { "expectedRevision": "0000000000000000" } }),
+    )
+    .unwrap_err();
+    assert_eq!(e["kind"], "Conflict");
+    let upd = invoke(
+        &w,
+        "update_game",
+        json!({ "id": id, "input": input("Editado", "NJ-9"), "opts": { "expectedRevision": rev } }),
+    )
+    .unwrap();
+    assert_eq!(upd["titulo"], "Editado");
+    assert_ne!(upd["revision"], rev.as_str());
+    let found = invoke(
+        &w,
+        "search_games",
+        json!({ "req": { "query": "Editado", "sort": "title_asc", "offset": 0, "limit": 10 } }),
+    )
+    .unwrap();
+    assert_eq!(found["total"], 1);
+
+    // delete: { id, opts }
+    let new_rev = upd["revision"].as_str().unwrap();
+    let e = invoke(&w, "delete_game", json!({ "id": id, "opts": {} })).unwrap_err();
+    assert_eq!(e["kind"], "InvalidInput");
+    let del = invoke(
+        &w,
+        "delete_game",
+        json!({ "id": id, "opts": { "expectedRevision": new_rev } }),
+    )
+    .unwrap();
+    assert!(del.is_null());
+    assert_eq!(
+        invoke(&w, "get_game", json!({ "id": id })).unwrap_err()["kind"],
+        "NotFound"
+    );
+    assert_eq!(
+        invoke(&w, "get_game", json!({ "id": id2 })).unwrap()["codigo"],
+        "nj_1"
+    );
+
+    // validation error
+    let mut bad = input("", "");
+    bad["puntuacion"] = json!(9);
+    assert_eq!(
+        invoke(&w, "create_game", json!({ "input": bad, "opts": {} })).unwrap_err()["kind"],
+        "InvalidInput"
+    );
+
+    // migrations
+    let st = invoke(&w, "get_migration_status", json!({})).unwrap();
+    assert_eq!(st["current"], 0);
+    assert_eq!(st["latest"], 1);
+    assert_eq!(st["pending"][0]["version"], 1);
+    let run = invoke(&w, "run_migrations", json!({})).unwrap();
+    assert_eq!(run["applied"], json!([1]));
+    assert!(run["backupPath"].as_str().unwrap().contains(".bak-"));
+    let st = invoke(&w, "get_migration_status", json!({})).unwrap();
+    assert_eq!(st["current"], 1);
+    assert_eq!(st["pending"], json!([]));
+    let run = invoke(&w, "run_migrations", json!({})).unwrap();
+    assert_eq!(run["applied"], json!([]));
+
+    // manual backup
+    let b = invoke(&w, "create_backup", json!({})).unwrap();
+    assert!(Path::new(b["path"].as_str().unwrap()).is_file());
+
+    // backups live next to the DB, inside backups/
+    assert!(dir.path().join("backups").is_dir());
+}
+
+#[test]
+fn ipc_read_only_mode_rejects_writes_and_set_read_only_toggles() {
+    let dir = TempDir::new().unwrap();
+    let path = fixture_db(&dir);
+    let (_app, w) = setup_rw(&path);
+    let s = invoke(&w, "set_read_only", json!({ "readOnly": true })).unwrap();
+    assert_eq!(s["readOnly"], true);
+    let before = std::fs::read(&path).unwrap();
+    for (cmd, args) in [
+        (
+            "create_game",
+            json!({ "input": input("X", ""), "opts": {} }),
+        ),
+        (
+            "update_game",
+            json!({ "id": 1, "input": input("X", ""), "opts": { "expectedRevision": "a" } }),
+        ),
+        (
+            "delete_game",
+            json!({ "id": 1, "opts": { "expectedRevision": "a" } }),
+        ),
+        ("run_migrations", json!({})),
+    ] {
+        assert_eq!(
+            invoke(&w, cmd, args).unwrap_err()["kind"],
+            "ReadOnly",
+            "{cmd}"
+        );
+    }
+    assert_eq!(before, std::fs::read(&path).unwrap());
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["readOnly"],
+        true
+    );
+    // read still works; back to read-write
+    assert_eq!(
+        invoke(&w, "get_migration_status", json!({})).unwrap()["current"],
+        0
+    );
+    let s = invoke(&w, "set_read_only", json!({ "readOnly": false })).unwrap();
+    assert_eq!(s["readOnly"], false);
+}
+
+#[test]
+fn ipc_set_db_path_validates_and_swaps() {
+    let dir = TempDir::new().unwrap();
+    let path = fixture_db(&dir);
+    let (_app, w) = setup_rw(&path);
+
+    // second catalog with a different content
+    let other = dir.path().join("other.db");
+    {
+        let c = Connection::open(&other).unwrap();
+        c.execute_batch(include_str!("fixtures/schema.sql"))
+            .unwrap();
+        c.execute("INSERT INTO juegos(titulo) VALUES ('Solo uno')", [])
+            .unwrap();
+    }
+    assert_eq!(
+        invoke(&w, "set_db_path", json!({ "path": "relativa/x.db" })).unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    let missing = dir.path().join("nope.db");
+    assert_eq!(
+        invoke(
+            &w,
+            "set_db_path",
+            json!({ "path": missing.to_string_lossy() })
+        )
+        .unwrap_err()["kind"],
+        "InvalidInput"
+    );
+    let junk = dir.path().join("junk.db");
+    std::fs::write(&junk, "esto no es sqlite").unwrap();
+    let e = invoke(&w, "set_db_path", json!({ "path": junk.to_string_lossy() })).unwrap_err();
+    assert_eq!(e["kind"], "Config");
+    assert_eq!(std::fs::read_to_string(&junk).unwrap(), "esto no es sqlite");
+    // unchanged after failures
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["total"],
+        3
+    );
+
+    let info = invoke(
+        &w,
+        "set_db_path",
+        json!({ "path": other.to_string_lossy() }),
+    )
+    .unwrap();
+    assert_eq!(info["total"], 1);
+    assert_eq!(info["dbFileName"], "other.db");
+    assert_eq!(
+        invoke(&w, "get_session_info", json!({})).unwrap()["dbFileName"],
+        "other.db"
+    );
 }

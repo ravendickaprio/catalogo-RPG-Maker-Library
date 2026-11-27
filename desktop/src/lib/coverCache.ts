@@ -5,6 +5,8 @@ export interface CoverCache {
   /** Cached data URL (or null = known to have no cover); undefined = not cached. */
   peek(id: number): string | null | undefined;
   load(id: number): Promise<string | null>;
+  /** Forgets a single id (e.g. after it was edited or deleted). */
+  invalidate(id: number): void;
   clear(): void;
   size(): number;
 }
@@ -57,6 +59,10 @@ export function createCoverCache(fetcher: (id: number) => Promise<Cover | null>,
       inflight.set(id, p);
       return p;
     },
+    invalidate(id) {
+      lru.delete(id);
+      inflight.delete(id);
+    },
     clear() {
       epoch++;
       lru.clear();
@@ -67,4 +73,5 @@ export function createCoverCache(fetcher: (id: number) => Promise<Cover | null>,
 }
 
 export const coverCache = createCoverCache(getCover, 300);
+export const invalidateCover = (id: number) => coverCache.invalidate(id);
 export const clearCoverCache = () => coverCache.clear();

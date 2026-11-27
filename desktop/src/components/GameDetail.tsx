@@ -1,23 +1,71 @@
-import { forwardRef, useEffect, useState } from "react";
-import { getGame, normalizeError } from "../api/client";
-import type { AppError, GameDetail as Detail } from "../api/types";
+import { forwardRef, useCallback, useEffect, useState } from "react";
+import { createGame, deleteGame, getGame, normalizeError, updateGame } from "../api/client";
+import type { AppError, GameDetail as Detail, GameInput, Vocabulary } from "../api/types";
 import { useCover } from "../hooks/useCover";
 import { estadoClass } from "../lib/estado";
+import ConfirmDialog from "./ConfirmDialog";
+import GameForm from "./GameForm";
+
+export interface DetailCommand {
+  kind: "edit" | "delete";
+  n: number;
+}
 
 interface Props {
   id: number | null;
+  /** Show the empty "new game" form instead of a record. */
+  creating?: boolean;
+  readOnly?: boolean;
+  vocab?: Vocabulary | null;
+  tagSuggestions?: string[];
   /** Changes when the library was modified externally: the detail is fetched again. */
   reloadToken?: number;
+  /** Palette-driven commands (edit/delete the shown game). */
+  command?: DetailCommand | null;
   /** Called when the selected game no longer exists (NotFound). */
   onMissing?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSaved?: (game: Detail, created: boolean) => void;
+  onDeleted?: (id: number) => void;
+  onCancelCreate?: () => void;
+  onToast?: (msg: string) => void;
 }
 
-const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id, reloadToken = 0, onMissing }, ref) {
+const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
+  {
+    id,
+    creating = false,
+    readOnly = false,
+    vocab = null,
+    tagSuggestions = [],
+    reloadToken = 0,
+    command = null,
+    onMissing,
+    onDirtyChange,
+    onSaved,
+    onDeleted,
+    onCancelCreate,
+    onToast,
+  },
+  ref,
+) {
   const [game, setGame] = useState<Detail | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [dupMessage, setDupMessage] = useState<{ input: GameInput; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
+    setEditing(false);
+    setConflict(false);
+    setFormError(null);
+    setDupMessage(null);
+    setConfirmDelete(false);
     if (id == null) {
       setGame(null);
       setError(null);
@@ -48,26 +96,164 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id, relo
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, reloadToken]);
+  }, [id]);
+
+  // External refresh: refetch silently, but never replace what the user is editing.
+  useEffect(() => {
+    if (id == null || reloadToken === 0) return;
+    let cancelled = false;
+    getGame(id).then(
+      (g) => {
+        if (!cancelled && !editing) setGame(g);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadToken]);
 
   const shown = game && game.id === id ? game : null;
   const cover = useCover(shown ? shown.id : null, !!shown?.hasCover);
+  const canWrite = !readOnly;
+
+  const startEdit = useCallback(() => {
+    setFormError(null);
+    setConflict(false);
+    setEditing(true);
+  }, []);
+
+  useEffect(() => {
+    if (!command || creating || !shown) return;
+    if (command.kind === "edit" && canWrite) startEdit();
+    else if (command.kind === "delete" && canWrite) setConfirmDelete(true);
+    else if (!canWrite) onToast?.("Modo solo lectura: no se puede modificar la biblioteca");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [command?.n]);
+
+  const handleError = (e: unknown, input?: GameInput) => {
+    const err = normalizeError(e);
+    if (err.kind === "DuplicateCode" && input) setDupMessage({ input, message: err.message });
+    else if (err.kind === "Conflict") setConflict(true);
+    else if (err.kind === "Busy") onToast?.("La base está ocupada por otra aplicación; inténtalo de nuevo");
+    else if (err.kind === "ReadOnly") onToast?.("La base está en modo solo lectura: no se guardó nada");
+    else if (err.kind === "NotFound" && game) setFormError("El juego ya no existe en la base de datos.");
+    else setFormError(err.message);
+  };
+
+  const save = async (input: GameInput, allowDuplicateCode = false) => {
+    setSaving(true);
+    setFormError(null);
+    setDupMessage(null);
+    try {
+      if (creating) {
+        const g = await createGame(input, { allowDuplicateCode });
+        onSaved?.(g, true);
+      } else if (game) {
+        const g = await updateGame(game.id, input, { allowDuplicateCode, expectedRevision: game.revision });
+        setGame(g);
+        setEditing(false);
+        onSaved?.(g, false);
+      }
+    } catch (e) {
+      handleError(e, input);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reloadFresh = async () => {
+    if (!game) return;
+    try {
+      const g = await getGame(game.id);
+      setGame(g);
+      setConflict(false);
+      setFormKey((k) => k + 1); // remounts the form with the fresh record: edits are discarded
+    } catch (e) {
+      const err = normalizeError(e);
+      if (err.kind === "NotFound") {
+        onMissing?.();
+        onToast?.("El juego fue eliminado por otra aplicación");
+      } else setFormError(err.message);
+    }
+  };
+
+  const doDelete = async () => {
+    if (!game) return;
+    setSaving(true);
+    try {
+      await deleteGame(game.id, { expectedRevision: game.revision });
+      setConfirmDelete(false);
+      onDeleted?.(game.id);
+    } catch (e) {
+      setConfirmDelete(false);
+      handleError(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const showForm = creating || (editing && !!shown);
 
   return (
     <aside className="detail-pane" ref={ref} tabIndex={-1} aria-label="Detalle del juego">
-      {id == null && <p className="empty">Selecciona un juego para ver su detalle.</p>}
-      {id != null && loading && <p className="empty">Cargando detalle…</p>}
-      {error && (
+      {!creating && id == null && <p className="empty">Selecciona un juego para ver su detalle.</p>}
+      {!creating && id != null && loading && <p className="empty">Cargando detalle…</p>}
+      {!creating && error && (
         <p className="error-text" role="alert">
           No se pudo cargar el detalle: {error.message}
         </p>
       )}
-      {shown && !loading && (
+      {conflict && (
+        <div className="banner error" role="alert">
+          <p>Este juego cambió en otra aplicación.</p>
+          <div className="dialog-actions">
+            <button type="button" onClick={reloadFresh}>
+              Recargar
+            </button>
+            <button type="button" onClick={() => setConflict(false)}>
+              Seguir editando
+            </button>
+          </div>
+        </div>
+      )}
+      {formError && (
+        <p className="error-text" role="alert">
+          {formError}
+        </p>
+      )}
+      {showForm && (
+        <GameForm
+          key={`${creating ? "new" : (shown?.id ?? 0)}-${formKey}`}
+          game={creating ? null : shown}
+          vocab={vocab}
+          tagSuggestions={tagSuggestions}
+          saving={saving}
+          onSubmit={(input) => void save(input)}
+          onDirtyChange={onDirtyChange}
+          onCancel={() => {
+            setConflict(false);
+            setFormError(null);
+            if (creating) onCancelCreate?.();
+            else setEditing(false);
+          }}
+        />
+      )}
+      {!showForm && shown && !loading && (
         <>
           <div className="cover-box">
             {cover.src ? <img src={cover.src} alt={`Portada de ${shown.titulo}`} /> : <div className="cover-placeholder">{cover.loading ? "Cargando portada…" : "Sin portada"}</div>}
           </div>
           <h2>{shown.titulo}</h2>
+          <div className="dialog-actions detail-actions">
+            <button type="button" onClick={startEdit} disabled={!canWrite} title={canWrite ? "Editar este juego" : "Modo solo lectura: actívalo en Ajustes para editar"}>
+              Editar
+            </button>
+            <button type="button" className="danger" onClick={() => setConfirmDelete(true)} disabled={!canWrite} title={canWrite ? "Eliminar este juego" : "Modo solo lectura: actívalo en Ajustes para eliminar"}>
+              Eliminar
+            </button>
+          </div>
           <GameFields game={shown} />
           {shown.tags.length > 0 && (
             <ul className="tags" aria-label="Etiquetas">
@@ -81,6 +267,23 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id, relo
           <h3>Ruta</h3>
           <p className="path-text">{shown.ruta || "—"}</p>
         </>
+      )}
+      {dupMessage && (
+        <ConfirmDialog
+          title="Código duplicado"
+          confirmLabel="Guardar de todos modos"
+          busy={saving}
+          onCancel={() => setDupMessage(null)}
+          onConfirm={() => void save(dupMessage.input, true)}
+        >
+          <p>{dupMessage.message}</p>
+          <p>¿Guardar de todos modos?</p>
+        </ConfirmDialog>
+      )}
+      {confirmDelete && shown && (
+        <ConfirmDialog title={`¿Eliminar «${shown.titulo}»?`} confirmLabel="Eliminar" danger busy={saving} onCancel={() => setConfirmDelete(false)} onConfirm={() => void doDelete()}>
+          <p>Esta acción no se puede deshacer desde la app (se creó un backup automático al inicio de la sesión).</p>
+        </ConfirmDialog>
       )}
     </aside>
   );

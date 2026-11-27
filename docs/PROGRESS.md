@@ -102,5 +102,41 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - Rendimiento del scroll de la galería no medido.
 - No verificado en Linux.
 
-## Fase 4 — CRUD (en curso)
-Diseño en `docs/CONTRACTS_PHASE4.md` y ADR-012. El usuario autorizó trabajar sobre `juegos.db` el 2026-11-27.
+## Fase 4 — CRUD ✅ (2026-11-27)
+
+**Implementación.** Dos subagentes Sonnet hicieron el backend y el frontend en paralelo, sobre `CONTRACTS.md` (sección Fase 4). El coordinador aplicó `cargo fmt` a los tests y verificó todo.
+- **Backend:**
+  - módulos `settings`, `backup`, `migrate` y `write`;
+  - 10 comandos nuevos;
+  - errores `Conflict`, `DuplicateCode`, `ReadOnly` y `Busy`;
+  - revisión FNV-1a por registro y normalización NFC;
+  - backup automático por sesión con rotación de 20;
+  - migración v1 con el ajuste del orden por código (ADR-013).
+- **Frontend:**
+  - formulario de edición y alta con editor de tags y vocabulario que conserva valores desconocidos;
+  - flujos de código duplicado, conflicto, base ocupada y solo lectura;
+  - aviso de cambios sin guardar;
+  - borrado con confirmación;
+  - diálogo de Ajustes (ruta de la DB, solo lectura, backup y migraciones);
+  - atajos Ctrl+N y Ctrl+S, y acciones en la paleta.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | 21 unitarios + 26 de repo + 18 de escritura + 6 IPC: **71 ok** |
+| clippy `-D warnings`, `fmt --check` | ok |
+| `npm test` (54), `typecheck`, `tauri build --no-bundle` | ok |
+| Interoperabilidad con el legacy (copia temporal) | Las consultas de v04 (`listar`, `obtener`, `tags_juego`, `titulo_con_codigo`) leen bien lo escrito desde Rust. `integrity_check` y el `integrity-check` de FTS dan ok; `juegos_busqueda` queda igual a `juegos` |
+| App real (copia desechable) | Ctrl+N → formulario con valores por defecto → código `ry_1092000` → aviso "ya lo tiene «Naked Story Uncensored»" → guardar de todos modos → id 1161, conteos actualizados, aviso "Juego creado", FTS encuentra el juego. Backup automático `backups/crud_test.db.bak-…` con 1160 registros (estado previo) e `integrity_check` ok |
+
+### Pendientes
+- Edición de portadas (Fase 5).
+- Las tags huérfanas se conservan (igual que el legacy).
+- No se probaron en la ventana real los flujos de conflicto ni de "base ocupada" (sí están cubiertos por tests de integración).
+- No verificado en Linux.
+
+## Fase 5 — Imágenes (plan propuesto)
+1. Protocolo de portadas `cover://` (o `asset`) con respuesta binaria y cabeceras de caché, en lugar de base64 por IPC.
+2. Cambiar o quitar la portada: un `<input type=file>` en el frontend envía los bytes al backend, que valida el tipo (magic) y el tamaño (≤ 20 MB) y genera una miniatura de 300×300. El formato (WebP lossy, como el legacy, mediante un crate de libwebp, o JPEG) se decidirá con un ADR. Se usa el mismo flujo de revisión y backup. Sin plugins.
+3. Decodificación y redimensionado en `spawn_blocking`, con límite de memoria.
+4. Pruebas con imágenes sintéticas. No se usan portadas con copyright en el repositorio.

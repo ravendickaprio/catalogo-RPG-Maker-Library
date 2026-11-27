@@ -104,12 +104,12 @@ fn search_scenarios(conn: &Connection, total: i64) -> Vec<(String, SearchRequest
 fn run_all(path: &Path) -> (Vec<(String, Stats)>, i64) {
     let conn = db::open_read_only(path).unwrap_or_else(|e| fail(e));
     let (fts, _) = repo::detect_fts(&conn).unwrap_or_else(|e| fail(e));
-    let total = repo::library_info(&conn, "bench").unwrap().total;
+    let total = repo::library_info(&conn, "bench", true).unwrap().total;
     let mut out: Vec<(String, Stats)> = Vec::new();
     out.push((
         "library_info".into(),
         measure(|| {
-            repo::library_info(&conn, "bench").unwrap();
+            repo::library_info(&conn, "bench", true).unwrap();
         }),
     ));
     for (name, r) in search_scenarios(&conn, total) {
@@ -169,7 +169,7 @@ fn run_all(path: &Path) -> (Vec<(String, Stats)>, i64) {
 fn header(path: &Path, label: &str) {
     let conn = db::open_read_only(path).unwrap_or_else(|e| fail(e));
     let (fts, sync) = repo::detect_fts(&conn).unwrap();
-    let info = repo::library_info(&conn, "bench").unwrap();
+    let info = repo::library_info(&conn, "bench", true).unwrap();
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     println!("### {label}\n");
     println!("- DB: {}", path.file_name().unwrap().to_string_lossy());
@@ -223,7 +223,7 @@ fn explain(conn: &Connection, title: &str, sql: &str, params: &[Value]) {
 fn plans(path: &Path) {
     let conn = db::open_read_only(path).unwrap_or_else(|e| fail(e));
     let (fts, _) = repo::detect_fts(&conn).unwrap();
-    let total = repo::library_info(&conn, "bench").unwrap().total;
+    let total = repo::library_info(&conn, "bench", true).unwrap().total;
     println!("```text");
     let sc = search_scenarios(&conn, total);
     let pick = |prefix: &str| {

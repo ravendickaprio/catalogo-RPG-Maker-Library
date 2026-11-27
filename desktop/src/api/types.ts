@@ -35,6 +35,8 @@ export interface GameDetail extends GameSummary {
   descripcion: string;
   ruta: string;
   tags: string[];
+  /** Record fingerprint used for optimistic concurrency (expectedRevision). */
+  revision: string;
 }
 
 export interface Cover {
@@ -69,7 +71,15 @@ export interface Suggestion {
   totalCount: number;
 }
 
-export type AppErrorKind = "NotFound" | "InvalidInput" | "Database" | "Config";
+export type AppErrorKind =
+  | "NotFound"
+  | "InvalidInput"
+  | "Database"
+  | "Config"
+  | "Conflict"
+  | "DuplicateCode"
+  | "ReadOnly"
+  | "Busy";
 
 export interface AppError {
   kind: AppErrorKind;
@@ -79,4 +89,52 @@ export interface AppError {
 export interface DataVersion {
   version: number;
   changed: boolean;
+}
+
+export interface GameInput {
+  titulo: string;
+  descripcion: string;
+  estado: string;
+  idioma: string;
+  ruta: string;
+  codigo: string;
+  pagina: string;
+  tipo: string;
+  puntuacion: number;
+  tags: string[];
+}
+
+export interface WriteOptions {
+  allowDuplicateCode?: boolean;
+  expectedRevision?: string | null;
+}
+
+export interface Vocabulary {
+  estados: string[];
+  idiomas: string[];
+  paginas: string[];
+  tipos: string[];
+  puntuaciones: number[];
+}
+
+export interface SessionInfo {
+  dbFileName: string;
+  dbDir: string;
+  readOnly: boolean;
+  lastBackup: string | null;
+}
+
+export interface BackupResult {
+  path: string;
+}
+
+export interface MigrationStatus {
+  current: number;
+  latest: number;
+  pending: { version: number; description: string }[];
+}
+
+export interface MigrationResult {
+  applied: number[];
+  backupPath: string;
 }

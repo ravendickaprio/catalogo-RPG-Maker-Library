@@ -1,11 +1,14 @@
-# RPG Maker Library — escritorio (prototipo Fase 1)
+# RPG Maker Library — escritorio (Fase 4: lectura y edición)
 
-Tauri 2 + React/TypeScript + Rust + SQLite. **Solo lectura**: la app no modifica la base de datos. La app Python (`catalogo_rpgmaker-v04.py`) sigue siendo la versión estable.
+Tauri 2 + React/TypeScript + Rust + SQLite. La app permite consultar y editar la biblioteca (crear, editar y eliminar juegos y tags; las portadas llegan en la Fase 5). Es compatible con la app Python, que sigue funcionando sobre la misma base.
 
 ## Base de datos
-- Por defecto se abre `../dev-data/juegos.dev.db`, una copia ignorada por Git.
-- Otra ruta: variable de entorno `RPGLIB_DB_PATH`.
-- Por seguridad se rechaza un archivo llamado `juegos.db` (la base principal) salvo que se defina `RPGLIB_ALLOW_PRIMARY_DB=1`. Aun así, se abriría en solo lectura.
+- **Ajustes → Ruta de la base de datos:** escribe la ruta absoluta (por ejemplo la de tu `juegos.db`) y pulsa "Abrir". Se guarda en `settings.json`, dentro del directorio de configuración de la app.
+- **Orden de prioridad:** `RPGLIB_DB_PATH` → ajustes → copia de desarrollo `../dev-data/juegos.dev.db`.
+- **Modo solo lectura:** se activa en Ajustes o con `RPGLIB_READ_ONLY=1`.
+- **Backups:** antes de la primera escritura de cada sesión se crea `backups/<db>.bak-AAAAMMDD-HHMMSS` junto a la base (se guardan los 20 más recientes). También puedes crear uno manual desde Ajustes.
+- **Migraciones:** solo se aplican al pulsar "Aplicar migraciones" en Ajustes, con backup previo. La v1 crea un índice de títulos que acelera el orden y el scroll en bibliotecas grandes.
+- La app nunca crea una base nueva y no altera el esquema al abrir. Si faltan columnas, muestra un error.
 
 Para crear o refrescar la copia de forma segura, con el origen abierto en solo lectura y desde la raíz del repo:
 ```bash
