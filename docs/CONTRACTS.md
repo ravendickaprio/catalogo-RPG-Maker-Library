@@ -232,3 +232,65 @@ type UndoResult = { importId: string; deleted: number; kept: { id: number; titul
 - **Estado:** un grupo entre corchetes cuyas palabras incluyan `F` (→ Terminado) o, si no, `P` (→ Empezado), sin distinguir mayúsculas: `[F]`, `[P bug]`, `[Demo F]`, `[P casi F]` (→ Terminado, como guarda la DB). O bien `F`/`P` como primer token fuera de corchetes. `F` tiene prioridad sobre `P`.
 - **Idioma:** los tokens de idioma se buscan en el nombre completo (incluido lo pegado al código: `RY-1_EN-this`, `RY-1-EN-CN`).
 - **Validación (`import_validate` sobre una copia, 1159 filas con ruta)** — legacy / nuevo: estado 1158/1156, idioma 1069/1069, código exacto 1136/1135, código normalizado 1136/1136. Diferencias intencionales (3): `[F] RY-d_642996` → `RY-D_642996` (la DB tiene el `RY-D` del bug); `[F]_RY-…` y `[F]RY-…` → Terminado (la DB tiene Sin empezar porque el legacy no veía la marca pegada). El centro de mantenimiento (Fase 7) las mostrará como estado inconsistente.
+
+## Fase 7 — Centro de mantenimiento (ADR-016)
+
+### Comandos nuevos
+| Comando | Entrada | Retorno | Notas |
+|---|---|---|---|
+| `maintenance_summary` | — | `CheckCount[]` | Conteo de cada detector SQL (todos salvo `ruta_inexistente`). Solo lectura, sin BLOBs (`imagen IS NULL OR length(imagen)=0`) |
+| `maintenance_list` | `{ req: { check: CheckId, offset: number, limit: number } }` | `IssuePage` | Paginado (limit 1..500). `ruta_inexistente` → `InvalidInput` (usar `scan_missing_paths`) |
+| `scan_missing_paths` | `{ onProgress: Channel<{ checked: number; total: number }> }` | `{ items: Issue[]; cancelled: boolean }` | Comprueba `Path::exists` por lotes en `spawn_blocking`, cancelable con `cancel_maintenance_scan`. Solo metadatos; nunca abre ni modifica archivos. En Linux una ruta `X:\…` se informa con `detail: "ruta de Windows"` y no se comprueba; en Windows una ruta `/…` análogamente con `"ruta de Linux"`. Rutas vacías no cuentan (ya las cubre otro criterio si hiciera falta) |
+| `cancel_maintenance_scan` | — | `null` | |
+| `list_orphan_tags` | — | `{ id: number; nombre: string }[]` | Tags sin ningún `juego_tags` |
+| `search_index_status` | — | `{ juegos: number; busqueda: number; mismatched: number; ftsOk: boolean }` | `mismatched` = filas de `juegos_busqueda` que no coinciden con `juegos` (faltan, sobran o difieren en titulo/codigo/descripcion/pagina/tipo/tags); `ftsOk` = `integrity-check` de FTS sin error |
+| `preview_batch` | `{ req: BatchRequest }` | `BatchPreview` | Calcula los cambios sin escribir. Ids inexistentes → en `skipped` |
+| `apply_batch` | `{ req: BatchRequest, revisions: Record<number, string> }` | `BatchResult` | Backup de sesión + un `BEGIN IMMEDIATE`. Para cada id, si su revisión actual ≠ la de `revisions` (la que vio la vista previa) → se omite con motivo. Escribe el registro de deshacer |
+| `delete_orphan_tags` | — | `BatchResult` | Borra las tags huérfanas (registro de deshacer con sus nombres) |
+| `rebuild_search_index` | — | `{ juegos; busqueda; mismatched; ftsOk }` | Resincroniza `juegos_busqueda` desde `juegos` (+tags) en una transacción y luego `INSERT INTO juegos_fts(juegos_fts) VALUES('rebuild')`. Backup de sesión previo. No toca `juegos` |
+| `list_batches` | — | `BatchEntry[]` | Últimos 20 lotes de la DB abierta, del más reciente al más antiguo |
+| `undo_last_batch` | — | `UndoBatchResult` | Restaura solo los registros cuya revisión actual = `revisionAfter`; los demás → `kept` con motivo. Ya deshecho → `InvalidInput`; ninguno → `NotFound`. Serializado con el bloqueo de escritura; si falla marcarlo como deshecho tras el commit → `Ok` con `warning` |
+
+### Tipos (camelCase)
+```ts
+type CheckId = "sin_descripcion" | "sin_portada" | "sin_tags" | "codigo_duplicado" | "codigo_vacio"
+  | "titulo_ry" | "estado_inconsistente" | "ruta_inexistente";
+type CheckCount = { check: CheckId; count: number };
+// detail: p. ej. "comparte código con #124 «…»", "archivo: [F] … → Terminado", "ruta de Windows"
+type Issue = { id: number; titulo: string; codigo: string; estado: string; ruta: string; detail: string | null };
+type IssuePage = { items: Issue[]; total: number; offset: number; limit: number };
+type BatchAction =
+  | { kind: "set_field"; field: "estado" | "idioma" | "tipo" | "pagina"; value: string }
+  | { kind: "add_tag"; tag: string }
+  | { kind: "remove_tag"; tag: string }
+  | { kind: "fix_ry_titles" };
+type BatchRequest = { ids: number[]; action: BatchAction };            // 1..5000 ids
+type BatchChange = { id: number; titulo: string; before: string; after: string; revision: string };
+type BatchPreview = { changes: BatchChange[]; skipped: { id: number; reason: string }[] };
+type BatchResult = { changed: number; skipped: { id: number; reason: string }[]; backupPath: string | null;
+  batchId: string | null; warning: string | null };
+type BatchEntry = { id: string; timestamp: string; description: string; changed: number; undone: boolean };
+type UndoBatchResult = { batchId: string; restored: number; kept: { id: number; titulo: string; reason: string }[];
+  backupPath: string | null; warning: string | null };
+```
+
+### Reglas
+- **Detectores** (todos ordenados por `id`, sin BLOBs):
+  - `sin_descripcion`: `trim(coalesce(descripcion,'')) = ''`;
+  - `sin_portada`: `imagen IS NULL OR length(imagen) = 0`;
+  - `sin_tags`: sin filas en `juego_tags`;
+  - `codigo_duplicado`: `codigo_norm` no vacío compartido por ≥ 2 juegos (`detail` nombra los otros ids);
+  - `codigo_vacio`: `trim(coalesce(codigo,'')) = ''`;
+  - `titulo_ry`: título que empieza por `RY` seguido de `-`, `_`, espacio o fin (sin distinguir mayúsculas);
+  - `estado_inconsistente`: el nombre de archivo de `ruta` (sin `.zip/.rar/.7z`) lleva marca de estado según `importer::parse_name` (estado ≠ "Sin empezar") y difiere del estado guardado. Es informativo: el usuario decide.
+- **Acciones:** `set_field` valida con las mismas reglas de longitud y NFC que `write::validate_input`; valor vacío → `InvalidInput`. `add_tag`/`remove_tag` usan la misma normalización que `save_tags` (NOCASE). `fix_ry_titles` propone el título de `parse_name(nombre de archivo de ruta)` solo si mejora (no vacío, no empieza por `RY`, distinto del actual); si no, el id va a `skipped`. Ningún lote toca `imagen`, `descripcion`, `puntuacion` ni `ruta`.
+- **Registro de deshacer:** `app_data_dir/undo/<timestamp>-<n>.json` con `{ db, id, timestamp, description, entries: [{ id, before: {campo: valor} | { tags: string[] }, revisionAfter }], undone }`. `db` = misma clave que el historial del importador (`importer::db_key`). Solo se listan y deshacen los lotes de la DB abierta. `delete_orphan_tags` guarda los nombres y el deshacer los recrea (sin vínculos, que no tenían).
+- **Cola de descripciones** (solo frontend): recorre `maintenance_list("sin_descripcion")` y edita con `get_game` + `update_game` (revisión normal); «Guardar y siguiente», «Saltar».
+- Solo lectura: detectores y `scan_missing_paths` permitidos; lotes, `delete_orphan_tags`, `rebuild_search_index` y deshacer → `ReadOnly`.
+
+### Notas de implementación (Fase 7, verificadas)
+- `fix_ry_titles` solo actúa sobre títulos que empiezan por `RY` y descarta las propuestas de una sola palabra de ≤ 4 caracteres («propuesta poco fiable»). En la copia de la DB real, los 906 títulos `RY …` vienen de nombres sin título, así que casi nunca hay propuesta útil; la vista previa permite desmarcar filas.
+- `scan_missing_paths` no comprueba rutas de red (`\servidor\…`), para evitar autenticación SMB saliente y bloqueos, ni rutas relativas; las informa con su `detail`. Suelta el bloqueo de la DB antes de tocar el disco.
+- `mismatched` compara también `codigo_norm`. Si la conexión es de solo lectura, `ftsOk` usa una comprobación alternativa (las filas de `juegos_busqueda` frente a `juegos_fts_docsize`) porque FTS rechaza `integrity-check`.
+- El deshacer solo restaura `titulo`, `estado`, `idioma`, `tipo`, `pagina` y la lista de tags; cualquier otra clave del registro → `InvalidInput`. Los registros se guardan como `undo/<YYYYMMDD-HHMMSS>-<nnn>.json`.
+- `apply_batch` se envía solo con los ids marcados en la vista previa y sus revisiones; las claves numéricas llegan como texto en JSON y se deserializan como `i64` (verificado).

@@ -1,6 +1,18 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AppError,
+  BatchEntry,
+  BatchPreview,
+  BatchRequest,
+  BatchResult,
+  CheckCount,
+  CheckId,
+  IndexStatus,
+  IssuePage,
+  MissingScanProgress,
+  MissingScanResult,
+  OrphanTag,
+  UndoBatchResult,
   BackupResult,
   Cover,
   DataVersion,
@@ -87,3 +99,22 @@ export const cancelScan = () => call<null>("cancel_scan");
 export const runImport = (req: ImportRequest) => call<ImportResult>("run_import", { req });
 export const getImportHistory = () => call<HistoryEntry[]>("get_import_history");
 export const undoLastImport = () => call<UndoResult>("undo_last_import");
+
+// Fase 7 — Centro de mantenimiento
+export const maintenanceSummary = () => call<CheckCount[]>("maintenance_summary");
+export const maintenanceList = (check: CheckId, offset: number, limit: number) =>
+  call<IssuePage>("maintenance_list", { req: { check, offset, limit } });
+export const scanMissingPaths = (onProgress: (p: MissingScanProgress) => void) => {
+  const channel = new Channel<MissingScanProgress>();
+  channel.onmessage = onProgress;
+  return call<MissingScanResult>("scan_missing_paths", { onProgress: channel });
+};
+export const cancelMaintenanceScan = () => call<null>("cancel_maintenance_scan");
+export const listOrphanTags = () => call<OrphanTag[]>("list_orphan_tags");
+export const searchIndexStatus = () => call<IndexStatus>("search_index_status");
+export const previewBatch = (req: BatchRequest) => call<BatchPreview>("preview_batch", { req });
+export const applyBatch = (req: BatchRequest, revisions: Record<number, string>) => call<BatchResult>("apply_batch", { req, revisions });
+export const deleteOrphanTags = () => call<BatchResult>("delete_orphan_tags");
+export const rebuildSearchIndex = () => call<IndexStatus>("rebuild_search_index");
+export const listBatches = () => call<BatchEntry[]>("list_batches");
+export const undoLastBatch = () => call<UndoBatchResult>("undo_last_batch");

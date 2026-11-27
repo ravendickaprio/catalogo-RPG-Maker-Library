@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod images;
 pub mod importer;
+pub mod maintenance;
 pub mod migrate;
 pub mod models;
 pub mod protocol;
@@ -49,7 +50,19 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::cancel_scan,
             commands::run_import,
             commands::get_import_history,
-            commands::undo_last_import
+            commands::undo_last_import,
+            commands::maintenance_summary,
+            commands::maintenance_list,
+            commands::scan_missing_paths,
+            commands::cancel_maintenance_scan,
+            commands::list_orphan_tags,
+            commands::search_index_status,
+            commands::preview_batch,
+            commands::apply_batch,
+            commands::delete_orphan_tags,
+            commands::rebuild_search_index,
+            commands::list_batches,
+            commands::undo_last_batch
         ])
 }
 

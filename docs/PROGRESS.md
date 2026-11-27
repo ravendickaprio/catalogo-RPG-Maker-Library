@@ -195,4 +195,43 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - La comprobación de duplicados en la importación hace una consulta por elemento, aceptable hasta unos miles de elementos.
 - No verificado en Linux (el plugin de diálogo usa GTK mediante `rfd`).
 
-## Fase 7 — Centro de mantenimiento (ADR-016)
+## Identidad visual (2026-11-27, petición del usuario)
+- **Icono:** los iconos de Tauri se generan desde `imgs/icon` (WebP 1024 → PNG; solo tamaños de escritorio). Logo de 28 px en la cabecera.
+- **Bienvenida:** pantalla de inicio con `imgs/portada.jpg` (WebP de 108 KB). No bloquea la carga, muestra el estado o el error de la biblioteca, tiene la preferencia `rpglib.welcome` («Mostrar al iniciar») y se reabre desde la acción «Pantalla de bienvenida» de la paleta.
+- **Imagen por defecto:** `imgs/default_image.jpg` (WebP de 300 px y 10 KB) se muestra en la interfaz para los juegos sin portada o con una portada que falla al cargar. **No se escribe en la DB.** `CoverImage` deja de recibir un placeholder distinto en cada sitio.
+- Los originales en `imgs/` no están versionados; solo las copias optimizadas en `desktop/src/assets`.
+
+## Fase 7 — Centro de mantenimiento ✅ (2026-11-27)
+
+**Implementación.** El coordinador escribió el contrato (`CONTRACTS.md`, sección Fase 7). Un Sonnet hizo el backend y otro el frontend, en paralelo. Un Haiku hizo la auditoría independiente y un tercer Sonnet aplicó las correcciones aprobadas. El coordinador hizo la verificación y la prueba de extremo a extremo.
+- **Backend (`maintenance.rs`, 12 comandos):**
+  - 8 detectores paginados, sin BLOBs;
+  - análisis de rutas cancelable (sin rutas de red ni relativas, y sin el bloqueo de la DB mientras toca el disco);
+  - tags huérfanas;
+  - estado y reconstrucción del índice de búsqueda;
+  - lotes con vista previa y revisiones (fijar campo, añadir o quitar tag, proponer títulos `RY`);
+  - registros de deshacer por DB en `app_data_dir/undo/`;
+  - deshacer serializado, que solo restaura lo que no cambió;
+  - guarda de análisis compartida con el importador.
+- **Frontend (`MaintenanceDialog`):**
+  - resumen con conteos;
+  - listas por detector («Cargar más», virtualizadas);
+  - acciones por lote con vista previa desmarcable fila a fila;
+  - historial de lotes y deshacer;
+  - cola de descripciones («Guardar y siguiente», Ctrl+Enter, «Saltar»);
+  - modo solo lectura;
+  - protección contra respuestas obsoletas y doble envío.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | **131 ok** (31 de mantenimiento), 1 ignorado |
+| clippy `-D warnings`, `fmt --check`, `npm test` (93), typecheck, `tauri build --no-bundle` | ok |
+| Extremo a extremo sobre una copia de la DB real (API del backend) | **Resumen en 43 ms:** 913 sin descripción, 911 sin portada, 1157 sin tags, 2 códigos duplicados, 3 vacíos, 906 títulos `RY`, 2 estados inconsistentes. **Índice:** 1160/1160, 0 desajustes, FTS ok. **Rutas:** 13 inexistentes, comprobadas en 4,1 s. **Lote** `add_tag` con las revisiones serializadas como en JSON: 3 cambios con backup; deshacer restaura los 3; `integrity_check` ok e índice intacto |
+| `fix_ry_titles` con datos reales | De 500 títulos `RY`, solo 2 propuestas, y las dos eran ruido («R18», «Fix1»). Se descartan las propuestas de una palabra de ≤ 4 caracteres y la vista previa es desmarcable |
+
+### Pendientes
+- No se probó en la ventana real (la sesión no controla la GUI); cubierto con tests simulados y extremo a extremo por la API.
+- La cola de descripciones no recoge los juegos que se queden sin descripción mientras el diálogo está abierto.
+- No verificado en Linux.
+

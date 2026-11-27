@@ -101,7 +101,7 @@ pub fn validate_input(i: &GameInput) -> Result<GameInput, AppError> {
 }
 
 /// SQL expression identical to the `codigo_norm` computed by the DB triggers.
-fn norm_expr(x: &str) -> String {
+pub(crate) fn norm_expr(x: &str) -> String {
     let mut e = format!("LOWER(COALESCE({x}, ''))");
     for c in [32, 9, 10, 13, 11, 12, 45, 95, 160] {
         e = format!("REPLACE({e}, char({c}), '')");
@@ -172,7 +172,7 @@ pub fn in_tx<T>(conn: &Connection, f: impl FnOnce() -> Result<T, AppError>) -> R
 }
 
 /// Legacy `guardar_tags`: replace the links of the game.
-fn save_tags(conn: &Connection, id: i64, tags: &[String]) -> Result<(), AppError> {
+pub(crate) fn save_tags(conn: &Connection, id: i64, tags: &[String]) -> Result<(), AppError> {
     conn.execute("DELETE FROM juego_tags WHERE juego_id = ?", [id])?;
     for t in tags {
         conn.execute("INSERT OR IGNORE INTO tags(nombre) VALUES (?)", [t])?;

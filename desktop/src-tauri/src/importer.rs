@@ -355,29 +355,49 @@ pub fn request_cancel() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
+/// Guarda genérica de "una sola operación a la vez" con bandera de cancelación.
+/// Cada módulo aporta sus propias banderas estáticas.
+pub struct FlagGuard {
+    scanning: &'static AtomicBool,
+    cancel: &'static AtomicBool,
+}
+
+impl FlagGuard {
+    pub fn acquire(
+        scanning: &'static AtomicBool,
+        cancel: &'static AtomicBool,
+        busy_msg: &str,
+    ) -> Result<FlagGuard, AppError> {
+        if scanning.swap(true, Ordering::SeqCst) {
+            return Err(AppError::InvalidInput(busy_msg.into()));
+        }
+        cancel.store(false, Ordering::SeqCst);
+        Ok(FlagGuard { scanning, cancel })
+    }
+
+    /// Bandera de cancelación de la operación en curso.
+    pub fn cancel_flag(&self) -> &'static AtomicBool {
+        self.cancel
+    }
+}
+
+impl Drop for FlagGuard {
+    fn drop(&mut self) {
+        self.scanning.store(false, Ordering::SeqCst);
+    }
+}
+
 /// Reserva el escaneo único de la sesión y reinicia la cancelación.
-pub struct ScanGuard;
+pub struct ScanGuard(FlagGuard);
 
 impl ScanGuard {
     pub fn acquire() -> Result<ScanGuard, AppError> {
-        if SCANNING.swap(true, Ordering::SeqCst) {
-            return Err(AppError::InvalidInput(
-                "Ya hay un análisis en curso.".into(),
-            ));
-        }
-        CANCEL.store(false, Ordering::SeqCst);
-        Ok(ScanGuard)
+        FlagGuard::acquire(&SCANNING, &CANCEL, "Ya hay un análisis en curso.").map(ScanGuard)
     }
 
     /// Bandera de cancelación del escaneo en curso.
     pub fn cancel_flag(&self) -> &'static AtomicBool {
-        &CANCEL
-    }
-}
-
-impl Drop for ScanGuard {
-    fn drop(&mut self) {
-        SCANNING.store(false, Ordering::SeqCst);
+        self.0.cancel_flag()
     }
 }
 
@@ -401,6 +421,19 @@ fn archive_ext(name: &str) -> Option<usize> {
     let dot = name.rfind('.')?;
     let ext = name[dot + 1..].to_ascii_lowercase();
     EXTENSIONS.contains(&ext.as_str()).then_some(dot)
+}
+
+/// Nombre del archivo o carpeta final de una `ruta` (separadores `\` o `/`), sin `.zip/.rar/.7z`.
+pub fn file_stem_of_ruta(ruta: &str) -> String {
+    let t = ruta.trim().trim_end_matches(['\\', '/']);
+    let last = t.rsplit(['\\', '/']).next().unwrap_or(t);
+    let lower = last.to_ascii_lowercase();
+    for ext in EXTENSIONS {
+        if lower.ends_with(&format!(".{ext}")) {
+            return last[..last.len() - ext.len() - 1].to_string();
+        }
+    }
+    last.to_string()
 }
 
 /// Clave de comparación de rutas: separadores unificados, sin separador final, `casefold`.
@@ -857,7 +890,7 @@ pub struct UndoResult {
     pub warning: Option<String>,
 }
 
-fn iso_now() -> String {
+pub(crate) fn iso_now() -> String {
     crate::backup::iso_utc(crate::backup::now_secs())
 }
 

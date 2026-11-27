@@ -201,3 +201,96 @@ export interface UndoResult {
   backupPath: string | null;
   warning: string | null;
 }
+
+// Fase 7 — Centro de mantenimiento (ADR-016)
+export type CheckId =
+  | "sin_descripcion"
+  | "sin_portada"
+  | "sin_tags"
+  | "codigo_duplicado"
+  | "codigo_vacio"
+  | "titulo_ry"
+  | "estado_inconsistente"
+  | "ruta_inexistente";
+export interface CheckCount {
+  check: CheckId;
+  count: number;
+}
+export interface Issue {
+  id: number;
+  titulo: string;
+  codigo: string;
+  estado: string;
+  ruta: string;
+  detail: string | null;
+}
+export interface IssuePage {
+  items: Issue[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+export type BatchField = "estado" | "idioma" | "tipo" | "pagina";
+export type BatchAction =
+  | { kind: "set_field"; field: BatchField; value: string }
+  | { kind: "add_tag"; tag: string }
+  | { kind: "remove_tag"; tag: string }
+  | { kind: "fix_ry_titles" };
+export interface BatchRequest {
+  ids: number[];
+  action: BatchAction;
+}
+export interface BatchChange {
+  id: number;
+  titulo: string;
+  before: string;
+  after: string;
+  revision: string;
+}
+export interface BatchSkip {
+  id: number;
+  reason: string;
+}
+export interface BatchPreview {
+  changes: BatchChange[];
+  skipped: BatchSkip[];
+}
+export interface BatchResult {
+  changed: number;
+  skipped: BatchSkip[];
+  backupPath: string | null;
+  batchId: string | null;
+  warning: string | null;
+}
+export interface BatchEntry {
+  id: string;
+  timestamp: string;
+  description: string;
+  changed: number;
+  undone: boolean;
+}
+export interface UndoBatchResult {
+  batchId: string;
+  restored: number;
+  kept: { id: number; titulo: string; reason: string }[];
+  backupPath: string | null;
+  warning: string | null;
+}
+export interface MissingScanProgress {
+  checked: number;
+  total: number;
+}
+export interface MissingScanResult {
+  items: Issue[];
+  cancelled: boolean;
+}
+export interface IndexStatus {
+  juegos: number;
+  busqueda: number;
+  mismatched: number;
+  ftsOk: boolean;
+}
+export interface OrphanTag {
+  id: number;
+  nombre: string;
+}

@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::models::*;
 use crate::settings::Settings;
-use crate::{backup, db, images, importer, migrate, repo, write};
+use crate::{backup, db, images, importer, maintenance, migrate, repo, write};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -197,6 +197,14 @@ impl AppState {
         if let Ok(mut d) = self.data_dir.lock() {
             *d = Some(dir);
         }
+    }
+
+    /// Carpeta de los registros de deshacer de los lotes de mantenimiento.
+    pub fn undo_dir(&self) -> Option<PathBuf> {
+        self.data_dir
+            .lock()
+            .ok()
+            .and_then(|d| d.as_ref().map(|d| d.join(maintenance::UNDO_DIR)))
     }
 
     pub fn history_path(&self) -> Option<PathBuf> {
@@ -645,6 +653,139 @@ pub async fn undo_last_import(
         .history_path()
         .ok_or_else(|| AppError::NotFound("No hay historial de importaciones.".into()))?;
     tauri::async_runtime::spawn_blocking(move || importer::undo_last_import_sync(&ready, &path))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+// ------------------------------------------------------------------ Fase 7: mantenimiento
+
+#[tauri::command]
+pub async fn maintenance_summary(
+    state: State<'_, AppState>,
+) -> Result<Vec<maintenance::CheckCount>, AppError> {
+    run_blocking(&state, |c, _| maintenance::summary(c)).await
+}
+
+#[tauri::command]
+pub async fn maintenance_list(
+    state: State<'_, AppState>,
+    req: maintenance::ListRequest,
+) -> Result<maintenance::IssuePage, AppError> {
+    run_blocking(&state, move |c, _| maintenance::list(c, &req)).await
+}
+
+/// Comprueba la existencia de las rutas guardadas (solo metadatos). Las filas se leen con el
+/// bloqueo de la DB y se suelta antes de tocar el disco.
+#[tauri::command]
+pub async fn scan_missing_paths(
+    state: State<'_, AppState>,
+    on_progress: tauri::ipc::Channel<maintenance::MissingProgress>,
+) -> Result<maintenance::MissingScan, AppError> {
+    let ready = state.ready()?;
+    let guard = maintenance::MaintGuard::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let cancel = guard.cancel_flag();
+        let _guard = guard;
+        let rows = {
+            let conn = ready.lock_conn()?;
+            maintenance::collect_rutas(&conn)?
+        };
+        Ok(maintenance::check_rutas(rows, cancel, &mut |p| {
+            let _ = on_progress.send(p.clone());
+        }))
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn cancel_maintenance_scan() -> Result<(), AppError> {
+    maintenance::request_cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_orphan_tags(
+    state: State<'_, AppState>,
+) -> Result<Vec<maintenance::OrphanTag>, AppError> {
+    run_blocking(&state, |c, _| maintenance::list_orphan_tags(c)).await
+}
+
+#[tauri::command]
+pub async fn search_index_status(
+    state: State<'_, AppState>,
+) -> Result<maintenance::IndexStatus, AppError> {
+    run_blocking(&state, |c, _| maintenance::search_index_status(c)).await
+}
+
+#[tauri::command]
+pub async fn preview_batch(
+    state: State<'_, AppState>,
+    req: maintenance::BatchRequest,
+) -> Result<maintenance::BatchPreview, AppError> {
+    run_blocking(&state, move |c, _| maintenance::preview_batch(c, &req)).await
+}
+
+#[tauri::command]
+pub async fn apply_batch(
+    state: State<'_, AppState>,
+    req: maintenance::BatchRequest,
+    revisions: std::collections::HashMap<i64, String>,
+) -> Result<maintenance::BatchResult, AppError> {
+    let ready = state.ready()?;
+    let dir = state.undo_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        maintenance::apply_batch(&ready, &req, &revisions, dir.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn delete_orphan_tags(
+    state: State<'_, AppState>,
+) -> Result<maintenance::BatchResult, AppError> {
+    let ready = state.ready()?;
+    let dir = state.undo_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        maintenance::delete_orphan_tags(&ready, dir.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn rebuild_search_index(
+    state: State<'_, AppState>,
+) -> Result<maintenance::IndexStatus, AppError> {
+    let ready = state.ready()?;
+    tauri::async_runtime::spawn_blocking(move || maintenance::rebuild_search_index(&ready))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn list_batches(
+    state: State<'_, AppState>,
+) -> Result<Vec<maintenance::BatchEntry>, AppError> {
+    let ready = state.ready()?;
+    let Some(dir) = state.undo_dir() else {
+        return Ok(vec![]);
+    };
+    tauri::async_runtime::spawn_blocking(move || maintenance::list_batches(&ready, &dir))
+        .await
+        .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))
+}
+
+#[tauri::command]
+pub async fn undo_last_batch(
+    state: State<'_, AppState>,
+) -> Result<maintenance::UndoBatchResult, AppError> {
+    let ready = state.ready()?;
+    let dir = state
+        .undo_dir()
+        .ok_or_else(|| AppError::NotFound("No hay lotes que deshacer.".into()))?;
+    tauri::async_runtime::spawn_blocking(move || maintenance::undo_last_batch(&ready, &dir))
         .await
         .map_err(|e| AppError::Database(format!("Tarea interrumpida: {e}")))?
 }

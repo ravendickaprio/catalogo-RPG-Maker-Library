@@ -5,7 +5,7 @@
 //! `--names` (solo depuración local, no compartir la salida): imprime además el nombre de archivo
 //! de cada caso en que el legacy acierta y el parser nuevo no.
 use regex::Regex;
-use rpg_library_lib::importer::parse_name;
+use rpg_library_lib::importer::{file_stem_of_ruta, parse_name};
 use rpg_library_lib::{db, search};
 use std::path::PathBuf;
 
@@ -67,18 +67,6 @@ impl Legacy {
     }
 }
 
-fn file_name_of(ruta: &str) -> String {
-    let t = ruta.trim().trim_end_matches(['\\', '/']);
-    let last = t.rsplit(['\\', '/']).next().unwrap_or(t);
-    let lower = last.to_ascii_lowercase();
-    for ext in [".zip", ".rar", ".7z"] {
-        if lower.ends_with(ext) {
-            return last[..last.len() - ext.len()].to_string();
-        }
-    }
-    last.to_string()
-}
-
 #[derive(Default)]
 struct Score {
     total: u32,
@@ -131,7 +119,7 @@ fn main() {
     let mut legacy_only_wrong = 0u32; // legacy acierta y el nuevo no
     let mut new_only_right = 0u32; // el nuevo acierta y el legacy no
     for (id, ruta, estado, idioma, codigo) in &rows {
-        let name = file_name_of(ruta);
+        let name = file_stem_of_ruta(ruta);
         let n = parse_name(&name);
         let (le, li, lc) = (leg.estado(&name), leg.idioma(&name), leg.code(&name));
         for (score, db_v, new_v, leg_v, field) in [

@@ -5,6 +5,7 @@ import CommandPalette from "./components/CommandPalette";
 import ConfirmDialog from "./components/ConfirmDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import ImportDialog from "./components/ImportDialog";
+import MaintenanceDialog from "./components/MaintenanceDialog";
 import WelcomeScreen, { welcomeOnStartup } from "./components/WelcomeScreen";
 import logo from "./assets/logo.webp";
 import GameDetail, { type DetailCommand } from "./components/GameDetail";
@@ -44,6 +45,7 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [maintOpen, setMaintOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(welcomeOnStartup);
   const [command, setCommand] = useState<DetailCommand | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
@@ -246,6 +248,7 @@ export default function App() {
       { id: "edit", label: "Editar juego seleccionado", run: () => sendCommand("edit") },
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
       { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
+      { id: "maintenance", label: "Centro de mantenimiento", run: () => setMaintOpen(true) },
       { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
       { id: "welcome", label: "Pantalla de bienvenida", run: () => setWelcomeOpen(true) },
       { id: "view-list", label: "Vista lista", run: () => setView("list") },
@@ -332,6 +335,9 @@ export default function App() {
         </button>
         <button type="button" onClick={() => setImportOpen(true)} title="Importar juegos desde una carpeta">
           Importar…
+        </button>
+        <button type="button" onClick={() => setMaintOpen(true)} title="Detectar y corregir problemas de la biblioteca">
+          Mantenimiento
         </button>
         <button type="button" onClick={() => setSettingsOpen(true)} title="Ajustes de la base de datos">
           Ajustes
@@ -422,6 +428,21 @@ export default function App() {
           onChanged={() => {
             afterWrite();
             setToast("Biblioteca actualizada");
+          }}
+        />
+      )}
+      {maintOpen && (
+        <MaintenanceDialog
+          vocab={vocab}
+          readOnly={readOnly}
+          onClose={() => setMaintOpen(false)}
+          onChanged={() => {
+            afterWrite();
+            setToast("Biblioteca actualizada");
+          }}
+          onOpenGame={(g) => {
+            setMaintOpen(false);
+            locateGame(g);
           }}
         />
       )}
