@@ -7,6 +7,7 @@ import type {
   BatchResult,
   CheckCount,
   CheckId,
+  Dashboard,
   IndexStatus,
   IssuePage,
   MissingScanProgress,
@@ -83,6 +84,8 @@ export const getSessionInfo = () => call<SessionInfo>("get_session_info");
 export const createGame = (input: GameInput, opts: WriteOptions = {}) => call<GameDetail>("create_game", { input, opts });
 export const updateGame = (id: number, input: GameInput, opts: WriteOptions = {}) =>
   call<GameDetail>("update_game", { id, input, opts });
+export const setFavorite = (id: number, favorite: boolean, expectedRevision: string) =>
+  call<GameDetail>("set_favorite", { id, favorite, opts: { expectedRevision } });
 export const deleteGame = (id: number, opts: WriteOptions) => call<null>("delete_game", { id, opts });
 export const createBackup = () => call<BackupResult>("create_backup");
 export const setDbPath = (path: string) => call<LibraryInfo>("set_db_path", { path });
@@ -118,3 +121,6 @@ export const deleteOrphanTags = () => call<BatchResult>("delete_orphan_tags");
 export const rebuildSearchIndex = () => call<IndexStatus>("rebuild_search_index");
 export const listBatches = () => call<BatchEntry[]>("list_batches");
 export const undoLastBatch = () => call<UndoBatchResult>("undo_last_batch");
+
+// Fase 8
+export const getDashboard = () => call<Dashboard>("get_dashboard");

@@ -285,7 +285,7 @@ type UndoBatchResult = { batchId: string; restored: number; kept: { id: number; 
   - `estado_inconsistente`: el nombre de archivo de `ruta` (sin `.zip/.rar/.7z`) lleva marca de estado según `importer::parse_name` (estado ≠ "Sin empezar") y difiere del estado guardado. Es informativo: el usuario decide.
 - **Acciones:** `set_field` valida con las mismas reglas de longitud y NFC que `write::validate_input`; valor vacío → `InvalidInput`. `add_tag`/`remove_tag` usan la misma normalización que `save_tags` (NOCASE). `fix_ry_titles` propone el título de `parse_name(nombre de archivo de ruta)` solo si mejora (no vacío, no empieza por `RY`, distinto del actual); si no, el id va a `skipped`. Ningún lote toca `imagen`, `descripcion`, `puntuacion` ni `ruta`.
 - **Registro de deshacer:** `app_data_dir/undo/<timestamp>-<n>.json` con `{ db, id, timestamp, description, entries: [{ id, before: {campo: valor} | { tags: string[] }, revisionAfter }], undone }`. `db` = misma clave que el historial del importador (`importer::db_key`). Solo se listan y deshacen los lotes de la DB abierta. `delete_orphan_tags` guarda los nombres y el deshacer los recrea (sin vínculos, que no tenían).
-- **Cola de descripciones** (solo frontend): recorre `maintenance_list("sin_descripcion")` y edita con `get_game` + `update_game` (revisión normal); «Guardar y siguiente», «Saltar».
+- **Cola de descripciones:** en la Fase 8 la sustituye la «Revisión por tandas» (ADR-017), que es un superconjunto. Mantenimiento ofrece un acceso directo a ella con el criterio `sin_descripcion`.
 - Solo lectura: detectores y `scan_missing_paths` permitidos; lotes, `delete_orphan_tags`, `rebuild_search_index` y deshacer → `ReadOnly`.
 
 ### Notas de implementación (Fase 7, verificadas)
@@ -294,3 +294,27 @@ type UndoBatchResult = { batchId: string; restored: number; kept: { id: number; 
 - `mismatched` compara también `codigo_norm`. Si la conexión es de solo lectura, `ftsOk` usa una comprobación alternativa (las filas de `juegos_busqueda` frente a `juegos_fts_docsize`) porque FTS rechaza `integrity-check`.
 - El deshacer solo restaura `titulo`, `estado`, `idioma`, `tipo`, `pagina` y la lista de tags; cualquier otra clave del registro → `InvalidInput`. Los registros se guardan como `undo/<YYYYMMDD-HHMMSS>-<nnn>.json`.
 - `apply_batch` se envía solo con los ids marcados en la vista previa y sus revisiones; las claves numéricas llegan como texto en JSON y se deserializan como `i64` (verificado).
+
+## Fase 8 — Funciones complementarias (ADR-017)
+
+### Comando nuevo
+| Comando | Entrada | Retorno | Notas |
+|---|---|---|---|
+| `get_dashboard` | — | `Dashboard` | Solo lectura. Lee una sola vez las columnas anteriores a `imagen` más `length(imagen)` (nunca el BLOB) y los conteos de tags. Valores vacíos o NULL se agrupan como `""` |
+
+```ts
+type Dashboard = {
+  total: number;
+  estados: CountItem[]; idiomas: CountItem[]; tipos: CountItem[]; paginas: CountItem[];   // orden: count desc, value asc
+  puntuaciones: CountItem[];          // value "0.0".."5.0" (pasos de 0.5), los 11 siempre presentes
+  estadoIdioma: { estado: string; idioma: string; count: number }[];
+  cobertura: { conPortada: number; conDescripcion: number; conTags: number; conRuta: number };
+  topTags: CountItem[];               // las 15 tags más usadas
+  elapsedMs: number;
+};
+```
+
+### Frontend (sin backend nuevo)
+- **Favoritos:** `FAVORITE_TAG = "Favorito"`. Comando `set_favorite { id, favorite: boolean, opts: { expectedRevision } } → GameDetail`. **Solo toca `juego_tags` (y crea la tag `Favorito` si no existe)**: no revalida ni normaliza el resto de campos, así que los registros antiguos con valores fuera de rango también se pueden marcar. Comprueba la revisión (otra → `Conflict`); solo lectura → `ReadOnly`; usa backup de sesión y `BEGIN IMMEDIATE`. La tag se busca sin distinguir mayúsculas (`NOCASE`). Conflicto en la interfaz → mensaje y recarga.
+- **Revisión por tandas:** pide los ids con `maintenance_list` (páginas de 500) del detector elegido, los baraja (Fisher–Yates) y toma N. Edita con el `GameForm` existente.
+- **Atajos:** una tabla única `SHORTCUTS` en `lib/` que alimenta tanto el manejador como el diálogo de ayuda.

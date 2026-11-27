@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import MaintenanceDialog from "../components/MaintenanceDialog";
-import type { BatchPreview, GameDetail, Issue, Vocabulary } from "../api/types";
+import type { BatchPreview, Issue, Vocabulary } from "../api/types";
 
 let lastChannel: { onmessage: ((m: unknown) => void) | null } | null = null;
 vi.mock("@tauri-apps/api/core", () => ({
@@ -19,10 +19,6 @@ const mockInvoke = vi.mocked(invoke);
 
 const vocab: Vocabulary = { estados: ["Sin empezar", "Empezado", "Terminado"], idiomas: ["Japonés", "Español"], paginas: ["A"], tipos: ["RPG", "Otro"], puntuaciones: [0] };
 const issue = (id: number, over: Partial<Issue> = {}): Issue => ({ id, titulo: `Juego ${id}`, codigo: `RY-${id}`, estado: "Sin empezar", ruta: `C:/j/${id}`, detail: null, ...over });
-const game = (id: number, over: Partial<GameDetail> = {}): GameDetail => ({
-  id, titulo: `Juego ${id}`, codigo: `RY-${id}`, estado: "Sin empezar", idioma: "Japonés", tipo: "RPG", pagina: "A", puntuacion: 0, hasCover: false,
-  descripcion: "", ruta: `C:/j/${id}`, tags: ["x"], revision: `rev${id}`, ...over,
-});
 const calls = (cmd: string) => mockInvoke.mock.calls.filter((c) => c[0] === cmd).map((c) => c[1] as Record<string, unknown>);
 
 let handlers: Record<string, (a: Record<string, unknown>) => unknown>;
@@ -64,8 +60,9 @@ function setup(readOnly = false) {
   const onChanged = vi.fn();
   const onClose = vi.fn();
   const onOpenGame = vi.fn();
-  render(<MaintenanceDialog vocab={vocab} readOnly={readOnly} onClose={onClose} onChanged={onChanged} onOpenGame={onOpenGame} />);
-  return { onChanged, onClose, onOpenGame };
+  const onOpenReview = vi.fn();
+  render(<MaintenanceDialog vocab={vocab} readOnly={readOnly} onClose={onClose} onChanged={onChanged} onOpenGame={onOpenGame} onOpenReview={onOpenReview} />);
+  return { onChanged, onClose, onOpenGame, onOpenReview };
 }
 async function openDetector(name: RegExp) {
   fireEvent.click(await screen.findByRole("button", { name }));
@@ -232,77 +229,10 @@ describe("MaintenanceDialog", () => {
     expect((screen.getByRole("button", { name: "Deshacer último lote" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  describe("description queue", () => {
-    beforeEach(() => {
-      handlers.maintenance_list = () => ({ items: [issue(1), issue(2)], total: 2, offset: 0, limit: 500 });
-      handlers.get_game = (a) => game(a.id as number);
-    });
-    async function openQueue() {
-      const r = setup();
-      fireEvent.click(screen.getByRole("button", { name: "Cola de descripciones" }));
-      await screen.findByText(/1 de 2/);
-      await waitFor(() => expect((screen.getByLabelText("Descripción") as HTMLTextAreaElement).disabled).toBe(false));
-      return r;
-    }
-
-    it("saves with expectedRevision and the full current input, then advances", async () => {
-      handlers.update_game = (a) => game(a.id as number);
-      const { onChanged } = await openQueue();
-      fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Una historia" } });
-      fireEvent.click(screen.getByRole("button", { name: "Guardar y siguiente" }));
-      await screen.findByText(/2 de 2/);
-      const c = calls("update_game")[0] as { id: number; input: Record<string, unknown>; opts: Record<string, unknown> };
-      expect(c.id).toBe(1);
-      expect(c.opts).toEqual({ expectedRevision: "rev1" });
-      expect(c.input).toMatchObject({ titulo: "Juego 1", descripcion: "Una historia", estado: "Sin empezar", idioma: "Japonés", codigo: "RY-1", tags: ["x"] });
-      expect(onChanged).toHaveBeenCalled();
-    });
-
-    it("Ctrl+Enter saves and the end of the queue is reported", async () => {
-      handlers.update_game = (a) => game(a.id as number);
-      await openQueue();
-      const ta = screen.getByLabelText("Descripción");
-      fireEvent.change(ta, { target: { value: "uno" } });
-      fireEvent.keyDown(ta, { key: "Enter", ctrlKey: true });
-      await screen.findByText(/2 de 2/);
-      await waitFor(() => expect((screen.getByLabelText("Descripción") as HTMLTextAreaElement).disabled).toBe(false));
-      fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "dos" } });
-      fireEvent.keyDown(screen.getByLabelText("Descripción"), { key: "Enter", ctrlKey: true });
-      await screen.findByText(/Cola terminada\. Guardados: 2 · saltados: 0/);
-      expect(calls("update_game")).toHaveLength(2);
-    });
-
-    it("skip advances without writing", async () => {
-      await openQueue();
-      fireEvent.click(screen.getByRole("button", { name: "Saltar" }));
-      await screen.findByText(/2 de 2 · guardados 0 · saltados 1/);
-      expect(calls("update_game")).toHaveLength(0);
-    });
-
-    it("on Conflict shows the message, reloads the game and keeps the typed text", async () => {
-      let revision = "rev1";
-      handlers.get_game = (a) => game(a.id as number, { revision });
-      handlers.update_game = () => Promise.reject({ kind: "Conflict", message: "El juego cambió desde que lo abriste." });
-      await openQueue();
-      revision = "rev1b";
-      fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "mi texto" } });
-      fireEvent.click(screen.getByRole("button", { name: "Guardar y siguiente" }));
-      await screen.findByText("El juego cambió desde que lo abriste.");
-      await waitFor(() => expect(calls("get_game")).toHaveLength(2));
-      expect(screen.getByText(/1 de 2/)).toBeTruthy();
-      expect((screen.getByLabelText("Descripción") as HTMLTextAreaElement).value).toBe("mi texto");
-      handlers.update_game = (a) => game(a.id as number);
-      fireEvent.click(screen.getByRole("button", { name: "Guardar y siguiente" }));
-      await screen.findByText(/2 de 2/);
-      expect((calls("update_game")[1] as { opts: unknown }).opts).toEqual({ expectedRevision: "rev1b" });
-    });
-
-    it("read-only disables saving", async () => {
-      setup(true);
-      fireEvent.click(screen.getByRole("button", { name: "Cola de descripciones" }));
-      await screen.findByText(/1 de 2/);
-      expect((screen.getByRole("button", { name: "Guardar y siguiente" }) as HTMLButtonElement).disabled).toBe(true);
-    });
+  it("the review button opens the batch review preset to sin_descripcion", async () => {
+    const { onOpenReview } = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Revisión por tandas (sin descripción)" }));
+    expect(onOpenReview).toHaveBeenCalledWith("sin_descripcion");
   });
 
   it("missing-path scan shows progress, can be cancelled and lists partial results", async () => {
@@ -333,8 +263,10 @@ describe("MaintenanceDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
     finish({ items: [], cancelled: false });
     await screen.findByText(/Comprobación terminada/);
-    fireEvent.keyDown(dlg, { key: "Escape" });
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => {
+      fireEvent.keyDown(dlg, { key: "Escape" }); // busy is released by an effect right after the result
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 
   it("a late detector load does not overwrite the missing-paths scan result", async () => {

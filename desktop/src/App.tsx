@@ -6,6 +6,10 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import ImportDialog from "./components/ImportDialog";
 import MaintenanceDialog from "./components/MaintenanceDialog";
+import DashboardDialog, { type DashboardFilter } from "./components/DashboardDialog";
+import ReviewDialog, { type ReviewCriterion } from "./components/ReviewDialog";
+import ShortcutsDialog from "./components/ShortcutsDialog";
+import ToolsMenu from "./components/ToolsMenu";
 import WelcomeScreen, { welcomeOnStartup } from "./components/WelcomeScreen";
 import logo from "./assets/logo.webp";
 import GameDetail, { type DetailCommand } from "./components/GameDetail";
@@ -18,7 +22,9 @@ import { useExternalRefresh } from "./hooks/useExternalRefresh";
 import { useGameSearch } from "./hooks/useGameSearch";
 import { useTheme } from "./hooks/useTheme";
 import { clearCoverCache, invalidateCover } from "./lib/cover";
+import { findFavoriteTag } from "./lib/favorites";
 import type { PaletteAction } from "./lib/palette";
+import { isModalOpen, matchShortcut } from "./lib/shortcuts";
 import { PREF_SIDEBAR, PREF_VIEW, writePref } from "./lib/storage";
 import { THEMES, type Theme } from "./lib/theme";
 import { loadSidebarOpen, loadView, type ViewMode } from "./lib/view";
@@ -46,6 +52,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [maintOpen, setMaintOpen] = useState(false);
+  const [dashOpen, setDashOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewCriterion, setReviewCriterion] = useState<ReviewCriterion>("sin_descripcion");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(welcomeOnStartup);
   const [command, setCommand] = useState<DetailCommand | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
@@ -212,7 +222,7 @@ export default function App() {
     },
     [loadSession, reloadSearch],
   );
-  const sendCommand = (kind: "edit" | "delete") => {
+  const sendCommand = (kind: "edit" | "delete" | "favorite") => {
     if (selectedId == null) {
       setToast("Selecciona un juego primero");
       return;
@@ -222,23 +232,46 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "k" || (k === "p" && e.shiftKey)) {
-        e.preventDefault();
-        setPaletteOpen(true);
-      } else if (k === "n" && !e.shiftKey) {
-        e.preventDefault();
-        startCreate();
-      } else if (k === "1" || k === "2") {
-        e.preventDefault();
-        setView(k === "1" ? "list" : "gallery");
+      if (isModalOpen()) return; // dialogs own their keys (form Ctrl+S/Esc, review Ctrl+Enter)
+      switch (matchShortcut(e)?.id) {
+        case "palette":
+          e.preventDefault();
+          setPaletteOpen(true);
+          break;
+        case "new-game":
+          e.preventDefault();
+          startCreate();
+          break;
+        case "view-list":
+          e.preventDefault();
+          setView("list");
+          break;
+        case "view-gallery":
+          e.preventDefault();
+          setView("gallery");
+          break;
+        case "help":
+          e.preventDefault();
+          setHelpOpen(true);
+          break;
+        // "focus-search" is handled by SearchBar; form/review/list shortcuts by their components.
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setView, startCreate]);
+
+  const showFavorites = () => {
+    const fav = findFavoriteTag(info?.tags);
+    if (!fav) setToast("Aún no hay favoritos");
+    else setTag(fav);
+  };
+  const applyDashboardFilter = (f: DashboardFilter) => {
+    if (f.kind === "estado") setEstado(f.value);
+    else if (f.kind === "idioma") setIdioma(f.value);
+    else setTag(f.value);
+    setDashOpen(false);
+  };
 
   const actions = useMemo<PaletteAction[]>(() => {
     const list: PaletteAction[] = [
@@ -249,6 +282,14 @@ export default function App() {
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
       { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
       { id: "maintenance", label: "Centro de mantenimiento", run: () => setMaintOpen(true) },
+      { id: "dashboard", label: "Estadísticas", run: () => setDashOpen(true) },
+      { id: "review", label: "Revisión por tandas", run: () => {
+          setReviewCriterion("sin_descripcion");
+          setReviewOpen(true);
+        } },
+      { id: "favorite", label: "Alternar favorito del juego seleccionado", run: () => sendCommand("favorite") },
+      { id: "show-favorites", label: "Mostrar favoritos", run: showFavorites },
+      { id: "shortcuts", label: "Atajos de teclado", run: () => setHelpOpen(true) },
       { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
       { id: "welcome", label: "Pantalla de bienvenida", run: () => setWelcomeOpen(true) },
       { id: "view-list", label: "Vista lista", run: () => setView("list") },
@@ -333,17 +374,25 @@ export default function App() {
         <button type="button" className="primary" onClick={startCreate} title={readOnly ? "Modo solo lectura" : "Nuevo juego (Ctrl+N)"} disabled={readOnly}>
           Nuevo juego
         </button>
-        <button type="button" onClick={() => setImportOpen(true)} title="Importar juegos desde una carpeta">
-          Importar…
-        </button>
-        <button type="button" onClick={() => setMaintOpen(true)} title="Detectar y corregir problemas de la biblioteca">
-          Mantenimiento
-        </button>
+        <ToolsMenu
+          items={[
+            { id: "import", label: "Importar…", title: "Importar juegos desde una carpeta", run: () => setImportOpen(true) },
+            { id: "maintenance", label: "Mantenimiento", title: "Detectar y corregir problemas de la biblioteca", run: () => setMaintOpen(true) },
+            { id: "dashboard", label: "Estadísticas", title: "Resumen y cobertura de datos de la biblioteca", run: () => setDashOpen(true) },
+            { id: "review", label: "Revisión por tandas", title: "Revisar tandas aleatorias de juegos", run: () => {
+          setReviewCriterion("sin_descripcion");
+          setReviewOpen(true);
+        } },
+          ]}
+        />
         <button type="button" onClick={() => setSettingsOpen(true)} title="Ajustes de la base de datos">
           Ajustes
         </button>
         <button type="button" onClick={() => setPaletteOpen(true)} title="Paleta de comandos (Ctrl+K)">
           Comandos
+        </button>
+        <button type="button" className="icon-btn" aria-label="Atajos de teclado" title="Atajos de teclado (?)" onClick={() => setHelpOpen(true)}>
+          ?
         </button>
       </header>
       {infoError && (
@@ -414,6 +463,10 @@ export default function App() {
               setToast(g.hasCover ? "Portada guardada" : "Portada quitada");
             }}
             onDeleted={onDeleted}
+            onFavoriteChanged={(g, fav) => {
+              afterWrite(g.id);
+              setToast(fav ? "Añadido a favoritos" : "Quitado de favoritos");
+            }}
             onCancelCreate={() => setCreating(false)}
             onToast={setToast}
           />
@@ -444,8 +497,28 @@ export default function App() {
             setMaintOpen(false);
             locateGame(g);
           }}
+          onOpenReview={(c) => {
+            setMaintOpen(false);
+            setReviewCriterion(c);
+            setReviewOpen(true);
+          }}
         />
       )}
+      {dashOpen && <DashboardDialog onClose={() => setDashOpen(false)} onFilter={applyDashboardFilter} />}
+      {reviewOpen && (
+        <ReviewDialog
+          initialCriterion={reviewCriterion}
+          vocab={vocab}
+          readOnly={readOnly}
+          tagSuggestions={(info?.tags ?? []).map((t) => t.value)}
+          onClose={() => setReviewOpen(false)}
+          onChanged={(id) => {
+            afterWrite(id);
+            setRefreshTick((n) => n + 1);
+          }}
+        />
+      )}
+      {helpOpen && <ShortcutsDialog onClose={() => setHelpOpen(false)} />}
       {settingsOpen && (
         <SettingsDialog
           session={session}

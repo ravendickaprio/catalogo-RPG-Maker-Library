@@ -11,6 +11,7 @@ import {
   type FormValues,
 } from "../lib/gameInput";
 import type { AppError } from "../api/types";
+import { matches } from "../lib/shortcuts";
 import ConfirmDialog from "./ConfirmDialog";
 import CoverEditor from "./CoverEditor";
 import TagEditor from "./TagEditor";
@@ -27,9 +28,17 @@ interface Props {
   /** Cover changes are saved immediately; the parent receives the updated record (new revision). */
   onCoverChanged?: (g: GameDetail) => void;
   onCoverError?: (e: AppError) => void;
+  /** Label of the submit button (default "Guardar"). */
+  submitLabel?: string;
+  /** Label of the cancel button (default "Cancelar"). */
+  cancelLabel?: string;
+  /** Esc cancels the form (default true). */
+  escCancels?: boolean;
+  /** Ctrl+Enter submits the form (review mode). */
+  ctrlEnterSubmits?: boolean;
 }
 
-export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit, onCancel, onDirtyChange, onCoverChanged, onCoverError }: Props) {
+export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit, onCancel, onDirtyChange, onCoverChanged, onCoverError, submitLabel = "Guardar", cancelLabel = "Cancelar", escCancels = true, ctrlEnterSubmits = false }: Props) {
   const initial = useMemo(() => (game ? valuesFromGame(game) : defaultValues(vocab)), [game]); // eslint-disable-line react-hooks/exhaustive-deps
   const [values, setValues] = useState<FormValues>(initial);
   const [submitted, setSubmitted] = useState(false);
@@ -116,10 +125,10 @@ export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit
         submit();
       }}
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        if (matches("form-save", e) || (ctrlEnterSubmits && matches("review-save-next", e))) {
           e.preventDefault();
           submit();
-        } else if (e.key === "Escape" && !confirmDiscard) {
+        } else if (escCancels && matches("form-cancel", e) && !confirmDiscard) {
           e.preventDefault();
           e.stopPropagation();
           cancel();
@@ -180,11 +189,11 @@ export default function GameForm({ game, vocab, tagSuggestions, saving, onSubmit
         <p className="note">Podrás añadir la portada después de crear el juego.</p>
       )}
       <div className="dialog-actions">
-        <button type="button" onClick={cancel} disabled={saving} title="Cancelar (Esc)">
-          Cancelar
+        <button type="button" onClick={cancel} disabled={saving} title={escCancels ? "Cancelar (Esc)" : undefined}>
+          {cancelLabel}
         </button>
-        <button type="submit" className="primary" disabled={saving} title="Guardar (Ctrl+S)">
-          {saving ? "Guardando…" : "Guardar"}
+        <button type="submit" className="primary" disabled={saving} title={ctrlEnterSubmits ? "Ctrl+Enter" : "Guardar (Ctrl+S)"}>
+          {saving ? "Guardando…" : submitLabel}
         </button>
       </div>
       {confirmDiscard && (

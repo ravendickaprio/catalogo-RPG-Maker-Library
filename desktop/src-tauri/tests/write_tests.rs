@@ -848,3 +848,77 @@ fn cover_conflict_and_readonly() {
         .unwrap_err();
     assert!(matches!(e, AppError::ReadOnly(_)));
 }
+
+const ODD_SEED: &str = "INSERT INTO juegos(titulo,codigo,estado,idioma,tipo,pagina,descripcion,ruta,puntuacion,imagen) VALUES
+  ('  Raro  ','x-1','Estado','Ing','','  pag  ','  desc  ','  C:/r  ',9,X'0102030405');";
+
+fn row_dump(c: &Connection, id: i64) -> String {
+    c.query_row(
+        "SELECT quote(titulo)||quote(codigo)||quote(estado)||quote(idioma)||quote(tipo)||quote(pagina)||quote(descripcion)||quote(ruta)||quote(puntuacion)||quote(imagen) FROM juegos WHERE id=?",
+        [id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn set_favorite_touches_only_links_and_keeps_fields_identical() {
+    let d = TempDir::new().unwrap();
+    let c = rw(&common::make_db_with(&d, "f.db", ODD_SEED));
+    let before = row_dump(&c, 1);
+    let g = repo::get_game(&c, 1).unwrap();
+    let a = write::set_favorite(&c, 1, true, &opts(&g.revision)).unwrap();
+    assert_eq!(a.tags, vec!["Favorito"]);
+    assert_eq!(row_dump(&c, 1), before);
+    assert_eq!(search(&c, "Favorito"), vec!["  Raro  "]);
+    assert_consistent(&c);
+    // idempotent add
+    let a2 = write::set_favorite(&c, 1, true, &opts(&a.revision)).unwrap();
+    assert_eq!(a2.tags, vec!["Favorito"]);
+    assert_eq!(a2.revision, a.revision);
+    assert_eq!(count(&c, "SELECT count(*) FROM juego_tags"), 1);
+    assert_eq!(count(&c, "SELECT count(*) FROM tags"), 1);
+    // remove: only the link, tag row remains
+    let r = write::set_favorite(&c, 1, false, &opts(&a2.revision)).unwrap();
+    assert!(r.tags.is_empty());
+    assert_eq!(row_dump(&c, 1), before);
+    assert_eq!(count(&c, "SELECT count(*) FROM juego_tags"), 0);
+    assert_eq!(count(&c, "SELECT count(*) FROM tags"), 1);
+    assert!(search(&c, "Favorito").is_empty());
+    assert_consistent(&c);
+}
+
+#[test]
+fn set_favorite_reuses_lowercase_tag_nocase() {
+    let d = TempDir::new().unwrap();
+    let c = rw(&common::make_db_with(
+        &d,
+        "f2.db",
+        &format!("{ODD_SEED} INSERT INTO tags(nombre) VALUES ('favorito');"),
+    ));
+    let g = repo::get_game(&c, 1).unwrap();
+    let a = write::set_favorite(&c, 1, true, &opts(&g.revision)).unwrap();
+    assert_eq!(a.tags, vec!["favorito"]);
+    assert_eq!(count(&c, "SELECT count(*) FROM tags"), 1);
+    let r = write::set_favorite(&c, 1, false, &opts(&a.revision)).unwrap();
+    assert!(r.tags.is_empty());
+    assert_eq!(count(&c, "SELECT count(*) FROM tags"), 1);
+}
+
+#[test]
+fn set_favorite_conflict_and_read_only() {
+    let d = TempDir::new().unwrap();
+    let p = common::make_db_with(&d, "f3.db", ODD_SEED);
+    let c = rw(&p);
+    let e = write::set_favorite(&c, 1, true, &opts("0000000000000000")).unwrap_err();
+    assert_eq!(e.kind(), "Conflict");
+    assert_eq!(count(&c, "SELECT count(*) FROM juego_tags"), 0);
+    let e = write::set_favorite(&c, 1, true, &WriteOptions::default()).unwrap_err();
+    assert_eq!(e.kind(), "InvalidInput");
+    drop(c);
+    let ready = Ready::open(&p, true).unwrap();
+    let e = ready
+        .with_write(|c| write::set_favorite(c, 1, true, &opts("x")))
+        .unwrap_err();
+    assert_eq!(e.kind(), "ReadOnly");
+}

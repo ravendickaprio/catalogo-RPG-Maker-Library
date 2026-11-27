@@ -4,7 +4,6 @@ import {
   applyBatch,
   cancelMaintenanceScan,
   deleteOrphanTags,
-  getGame,
   listBatches,
   listOrphanTags,
   maintenanceList,
@@ -15,7 +14,6 @@ import {
   scanMissingPaths,
   searchIndexStatus,
   undoLastBatch,
-  updateGame,
 } from "../api/client";
 import type {
   BatchAction,
@@ -26,7 +24,6 @@ import type {
   BatchResult,
   CheckCount,
   CheckId,
-  GameDetail,
   IndexStatus,
   Issue,
   MissingScanProgress,
@@ -35,9 +32,8 @@ import type {
   Vocabulary,
 } from "../api/types";
 import { useDialog } from "../hooks/useDialog";
-import { toInput, valuesFromGame, withCurrent } from "../lib/gameInput";
+import { withCurrent } from "../lib/gameInput";
 import ConfirmDialog from "./ConfirmDialog";
-import CoverImage from "./CoverImage";
 
 export interface OpenGameRef {
   id: number;
@@ -49,10 +45,12 @@ interface Props {
   vocab: Vocabulary | null;
   readOnly: boolean;
   onClose: () => void;
-  /** Data changed (batch, undo, queue save, tag delete, index rebuild): refresh counts, list and vocabulary. */
+  /** Data changed (batch, undo, review, tag delete, index rebuild): refresh counts, list and vocabulary. */
   onChanged: () => void;
   /** Shows a game in the main window (the host closes this dialog). */
   onOpenGame?: (game: OpenGameRef) => void;
+  /** Opens the batch review preset to a criterion (the host closes this dialog). */
+  onOpenReview: (criterion: "sin_descripcion") => void;
 }
 
 export const CHECK_LABEL: Record<CheckId, string> = {
@@ -83,9 +81,9 @@ const PREVIEW_CAP = 500;
 const MAX_IDS = 5000;
 const RO_NOTE = "Modo solo lectura: se pueden consultar los problemas y comprobar rutas, pero no aplicar lotes, deshacer, reconstruir ni eliminar.";
 
-type Tab = "overview" | "batches" | "queue";
+type Tab = "overview" | "batches";
 
-export default function MaintenanceDialog({ vocab, readOnly, onClose, onChanged, onOpenGame }: Props) {
+export default function MaintenanceDialog({ vocab, readOnly, onClose, onChanged, onOpenGame, onOpenReview }: Props) {
   const uid = useId();
   const [tab, setTab] = useState<Tab>("overview");
   const [busy, setBusy] = useState(false);
@@ -96,7 +94,6 @@ export default function MaintenanceDialog({ vocab, readOnly, onClose, onChanged,
   const tabs: [Tab, string][] = [
     ["overview", "Resumen"],
     ["batches", "Historial de lotes"],
-    ["queue", "Cola de descripciones"],
   ];
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && guardedClose()}>
@@ -116,8 +113,10 @@ export default function MaintenanceDialog({ vocab, readOnly, onClose, onChanged,
         )}
         {tab === "overview" && <Overview vocab={vocab} readOnly={readOnly} onChanged={onChanged} onOpenGame={onOpenGame} onBusy={setBusy} />}
         {tab === "batches" && <BatchesPanel readOnly={readOnly} onChanged={onChanged} onBusy={setBusy} />}
-        {tab === "queue" && <DescriptionQueue readOnly={readOnly} onChanged={onChanged} onBusy={setBusy} />}
         <div className="dialog-actions">
+          <button type="button" disabled={busy} onClick={() => onOpenReview("sin_descripcion")}>
+            Revisión por tandas (sin descripción)
+          </button>
           <button type="button" disabled={busy} onClick={onClose}>
             Cerrar
           </button>
@@ -862,175 +861,6 @@ function BatchesPanel({ readOnly, onChanged, onBusy }: { readOnly: boolean; onCh
         <ConfirmDialog title="¿Deshacer el último lote?" confirmLabel="Deshacer lote" danger busy={busy} onCancel={() => setConfirm(false)} onConfirm={() => void doUndo()}>
           <p>Se restaurarán los valores anteriores de los juegos del último lote que no hayan sido modificados desde entonces. Los modificados se conservarán.</p>
         </ConfirmDialog>
-      )}
-    </section>
-  );
-}
-
-/* ───────────────────────── Description queue ───────────────────────── */
-
-function DescriptionQueue({ readOnly, onChanged, onBusy }: { readOnly: boolean; onChanged: () => void; onBusy: (b: boolean) => void }) {
-  const uid = useId();
-  const [queue, setQueue] = useState<Issue[] | null>(null);
-  const [idx, setIdx] = useState(0);
-  const [game, setGame] = useState<GameDetail | null>(null);
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(0);
-  const [skipped, setSkipped] = useState(0);
-  const guard = useRef(false);
-  const textRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    onBusy(saving);
-  }, [saving, onBusy]);
-  useEffect(() => () => onBusy(false), [onBusy]);
-
-  useEffect(() => {
-    let dead = false;
-    (async () => {
-      try {
-        const all: Issue[] = [];
-        let off = 0;
-        for (;;) {
-          const p = await maintenanceList("sin_descripcion", off, 500);
-          all.push(...p.items);
-          off += p.items.length;
-          if (!p.items.length || off >= p.total) break;
-        }
-        if (!dead) setQueue(all);
-      } catch (e) {
-        if (!dead) {
-          setQueue([]);
-          setError(normalizeError(e).message);
-        }
-      }
-    })();
-    return () => {
-      dead = true;
-    };
-  }, []);
-
-  const current = queue?.[idx] ?? null;
-  const currentId = current?.id ?? null;
-  useEffect(() => {
-    if (currentId == null) return;
-    let dead = false;
-    setGame(null);
-    setText("");
-    getGame(currentId).then(
-      (g) => {
-        if (dead) return;
-        setGame(g);
-        setText(g.descripcion);
-        textRef.current?.focus();
-      },
-      (e) => !dead && setError(normalizeError(e).message),
-    );
-    return () => {
-      dead = true;
-    };
-  }, [currentId]);
-
-  const reloadKeepingText = async (id: number) => {
-    try {
-      setGame(await getGame(id));
-    } catch (e) {
-      setError(normalizeError(e).message);
-    }
-  };
-
-  const next = () => {
-    setError(null);
-    setIdx((i) => i + 1);
-  };
-  const skip = () => {
-    setSkipped((n) => n + 1);
-    next();
-  };
-  const save = async () => {
-    if (!game || game.id !== currentId || readOnly || guard.current) return;
-    if (!text.trim()) {
-      setError("Escribe una descripción o pulsa «Saltar».");
-      return;
-    }
-    guard.current = true;
-    setSaving(true);
-    setError(null);
-    try {
-      await updateGame(game.id, { ...toInput(valuesFromGame(game)), descripcion: text }, { expectedRevision: game.revision });
-      setSaved((n) => n + 1);
-      onChanged();
-      next();
-    } catch (e) {
-      const err = normalizeError(e);
-      setError(err.message);
-      if (err.kind === "Conflict") await reloadKeepingText(game.id);
-    } finally {
-      guard.current = false;
-      setSaving(false);
-    }
-  };
-
-  if (queue === null) {
-    return (
-      <section aria-label="Cola de descripciones">
-        <p role="status">Cargando cola…</p>
-      </section>
-    );
-  }
-  const total = queue.length;
-  return (
-    <section aria-label="Cola de descripciones">
-      <Err message={error} />
-      {!current ? (
-        <p role="status">
-          {total === 0 ? "No hay juegos sin descripción." : "Cola terminada."} Guardados: {saved} · saltados: {skipped}.
-        </p>
-      ) : (
-        <>
-          <p role="status" aria-live="polite">
-            {idx + 1} de {total} · guardados {saved} · saltados {skipped}
-          </p>
-          <div className="suggest-body">
-            {game ? <CoverImage id={game.id} hasCover={game.hasCover} alt={game.titulo} className="queue-cover" /> : null}
-            <div className="suggest-info">
-              <h3 className="suggest-game-title">{current.titulo}</h3>
-              <p className="cell-muted">
-                Código: {current.codigo || "—"} · Estado: {current.estado}
-              </p>
-              <div className="form-row">
-                <label htmlFor={`${uid}-d`}>Descripción</label>
-                <textarea
-                  id={`${uid}-d`}
-                  ref={textRef}
-                  rows={8}
-                  maxLength={20000}
-                  value={text}
-                  disabled={!game || readOnly}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      void save();
-                    }
-                  }}
-                />
-              </div>
-              {readOnly && <p className="note">Modo solo lectura: no se puede guardar.</p>}
-              <p className="note">Ctrl+Enter guarda y pasa al siguiente.</p>
-              <div className="dialog-actions">
-                <button type="button" disabled={saving} onClick={skip}>
-                  Saltar
-                </button>
-                <button type="button" className="primary" disabled={!game || game.id !== currentId || readOnly || saving} onClick={() => void save()}>
-                  Guardar y siguiente
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
       )}
     </section>
   );

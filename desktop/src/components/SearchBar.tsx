@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { SortKey } from "../api/types";
+import { isModalOpen, matches } from "../lib/shortcuts";
 
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "title_asc", label: "Nombre A-Z" },
@@ -30,9 +31,7 @@ const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(p, ref)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
-      if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!isModalOpen() && matches("focus-search", e)) {
         e.preventDefault();
         const el = inputRef.current;
         el?.focus();

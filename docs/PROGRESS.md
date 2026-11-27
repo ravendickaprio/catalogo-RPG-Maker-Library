@@ -235,3 +235,33 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - La cola de descripciones no recoge los juegos que se queden sin descripción mientras el diálogo está abierto.
 - No verificado en Linux.
 
+
+## Fase 8 — Funciones complementarias ✅ (2026-11-27, ADR-017)
+
+**Implementación.** El coordinador escribió el ADR-017 y el contrato. Un Sonnet hizo el backend (`get_dashboard`) y otro el frontend, en paralelo. Un Haiku hizo la auditoría independiente y un tercer Sonnet aplicó las correcciones aprobadas. El coordinador hizo la verificación y las pruebas sobre una copia de la DB real.
+- **Estadísticas:**
+  - `get_dashboard`, de solo lectura y sin BLOBs;
+  - en el diálogo: cobertura en %, barras por estado, idioma, tipo, página, puntuación (11 tramos) y tags, y una tabla estado × idioma;
+  - al pulsar una barra se filtra la biblioteca;
+  - sin «actividad», porque el esquema no tiene fechas.
+- **Favoritos:** tag reservada `Favorito` y comando `set_favorite`, que **solo toca `juego_tags`** y comprueba la revisión. Se marcan con ★ en la ficha, se filtran desde la barra lateral y desde la paleta, y las apps Python los ven como una tag más.
+- **Revisión por tandas:** equivale a `catalogo_rpgmaker-editor-completo.py` dentro de la app.
+  - Toma N juegos aleatorios (20 por defecto) de un detector: sin descripción, sin portada, sin tags o título `RY`.
+  - Se editan con el formulario completo y la portada.
+  - Tiene «Guardar y siguiente» (Ctrl+Enter), «Anterior», «Omitir» y «Nueva tanda», y avisa de los cambios sin guardar.
+  - Sustituye a la cola de descripciones de la Fase 7; Mantenimiento enlaza a ella.
+- **Atajos:** una tabla única (`lib/shortcuts.ts`) alimenta el manejador de teclado y la ayuda (`?` o F1). Los atajos globales no actúan con un diálogo modal abierto.
+- **Menú «Herramientas»** en la cabecera: Importar, Mantenimiento, Estadísticas y Revisión por tandas.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | **137 ok**, 1 ignorado |
+| clippy `-D warnings`, `fmt --check`, `npm test` (119, dos ejecuciones), typecheck, `tauri build --no-bundle` | ok |
+| `get_dashboard` sobre una copia de la DB real (1160 juegos) | 5,6–7,4 ms. Estados: 961 / 153 / 46. Idiomas: 831 / 329. Con portada 249, con descripción 247, con tags 3, con ruta 1159 |
+| `get_dashboard` en el bench sintético | 5 000 filas: p50 30 ms; 50 000 filas: p50 312 ms (unas 5 veces `library_info`; aceptable porque se carga una vez por diálogo) |
+| `set_favorite` sobre una copia de la DB real | Fila idéntica byte a byte (incluida la huella de la portada). La tag aparece y FTS encuentra «Favorito». Al quitarlo vuelve a quedar idéntica; `integrity_check` ok |
+
+### Pendientes
+- No se probó en la ventana real (la sesión no controla la GUI).
+- No verificado en Linux.

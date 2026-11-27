@@ -294,3 +294,18 @@ export interface OrphanTag {
   id: number;
   nombre: string;
 }
+
+// Fase 8 — Dashboard
+export interface Dashboard {
+  total: number;
+  estados: CountItem[];
+  idiomas: CountItem[];
+  tipos: CountItem[];
+  paginas: CountItem[];
+  /** Always the 11 buckets "0.0".."5.0". */
+  puntuaciones: CountItem[];
+  estadoIdioma: { estado: string; idioma: string; count: number }[];
+  cobertura: { conPortada: number; conDescripcion: number; conTags: number; conRuta: number };
+  topTags: CountItem[];
+  elapsedMs: number;
+}

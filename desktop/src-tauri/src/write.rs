@@ -264,6 +264,47 @@ pub fn update_game(
     })
 }
 
+/// Name of the favorite tag (case-insensitive lookup).
+pub const FAVORITE_TAG: &str = "Favorito";
+
+/// Adds/removes the `Favorito` link only. Touches nothing but `juego_tags` (and `tags` when the
+/// tag does not exist yet); no other field is validated or normalized.
+pub fn set_favorite(
+    conn: &Connection,
+    id: i64,
+    favorite: bool,
+    opts: &WriteOptions,
+) -> Result<GameDetail, AppError> {
+    if id <= 0 {
+        return Err(invalid("id debe ser > 0.".into()));
+    }
+    let expected = require_revision(opts)?;
+    in_tx(conn, || {
+        check_revision(conn, id, expected)?;
+        if favorite {
+            conn.execute(
+                "INSERT OR IGNORE INTO tags(nombre) VALUES (?)",
+                [FAVORITE_TAG],
+            )?;
+            let tag_id: i64 = conn.query_row(
+                "SELECT id FROM tags WHERE nombre = ? COLLATE NOCASE",
+                [FAVORITE_TAG],
+                |r| r.get(0),
+            )?;
+            conn.execute(
+                "INSERT OR IGNORE INTO juego_tags(juego_id, tag_id) VALUES (?, ?)",
+                params![id, tag_id],
+            )?;
+        } else {
+            conn.execute(
+                "DELETE FROM juego_tags WHERE juego_id = ? AND tag_id IN                  (SELECT id FROM tags WHERE nombre = ? COLLATE NOCASE)",
+                params![id, FAVORITE_TAG],
+            )?;
+        }
+        repo::get_game(conn, id)
+    })
+}
+
 fn store_cover(
     conn: &Connection,
     id: i64,

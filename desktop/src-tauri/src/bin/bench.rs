@@ -112,6 +112,12 @@ fn run_all(path: &Path) -> (Vec<(String, Stats)>, i64) {
             repo::library_info(&conn, "bench", true).unwrap();
         }),
     ));
+    out.push((
+        "dashboard".into(),
+        measure(|| {
+            repo::dashboard(&conn).unwrap();
+        }),
+    ));
     for (name, r) in search_scenarios(&conn, total) {
         out.push((
             name,

@@ -361,6 +361,11 @@ pub async fn get_library_info(state: State<'_, AppState>) -> Result<LibraryInfo,
 }
 
 #[tauri::command]
+pub async fn get_dashboard(state: State<'_, AppState>) -> Result<Dashboard, AppError> {
+    run_blocking(&state, |c, _| repo::dashboard(c)).await
+}
+
+#[tauri::command]
 pub async fn search_games(
     state: State<'_, AppState>,
     req: SearchRequest,
@@ -488,6 +493,17 @@ pub async fn update_game(
     state.ready()?.ensure_writable()?;
     let input = write::validate_input(&input)?;
     run_write(&state, move |c| write::update_game(c, id, &input, &opts)).await
+}
+
+#[tauri::command]
+pub async fn set_favorite(
+    state: State<'_, AppState>,
+    id: i64,
+    favorite: bool,
+    opts: Option<WriteOptions>,
+) -> Result<GameDetail, AppError> {
+    let opts = opts.unwrap_or_default();
+    run_write(&state, move |c| write::set_favorite(c, id, favorite, &opts)).await
 }
 
 #[tauri::command]

@@ -83,6 +83,16 @@ fn ipc_contract_end_to_end_and_read_only() {
     assert_eq!(info["tags"][0]["value"], "rpg");
     assert_eq!(info["tags"][0]["count"], 1);
 
+    // Fase 8: dashboard de solo lectura.
+    let dash = invoke(&w, "get_dashboard", json!({})).unwrap();
+    assert_eq!(dash["total"], 3);
+    assert_eq!(dash["puntuaciones"].as_array().unwrap().len(), 11);
+    assert_eq!(dash["cobertura"]["conPortada"], 1);
+    assert_eq!(dash["cobertura"]["conTags"], 1);
+    assert_eq!(dash["topTags"][0]["value"], "rpg");
+    assert_eq!(dash["estadoIdioma"].as_array().unwrap().len(), 3);
+    assert!(dash["elapsedMs"].is_number());
+
     let page = invoke(
         &w,
         "search_games",
@@ -329,6 +339,27 @@ fn ipc_write_commands_arg_shapes_and_flow() {
     .unwrap();
     assert_eq!(upd["titulo"], "Editado");
     assert_ne!(upd["revision"], rev.as_str());
+    // set_favorite: { id, favorite, opts }; stale -> Conflict
+    let e = invoke(
+        &w,
+        "set_favorite",
+        json!({ "id": id, "favorite": true, "opts": { "expectedRevision": rev } }),
+    )
+    .unwrap_err();
+    assert_eq!(e["kind"], "Conflict");
+    let fav = invoke(
+        &w,
+        "set_favorite",
+        json!({ "id": id, "favorite": true, "opts": { "expectedRevision": upd["revision"] } }),
+    )
+    .unwrap();
+    assert!(fav["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t == "Favorito"));
+    assert_eq!(fav["titulo"], "Editado");
+    let upd = fav;
     let found = invoke(
         &w,
         "search_games",
@@ -403,6 +434,10 @@ fn ipc_read_only_mode_rejects_writes_and_set_read_only_toggles() {
         (
             "update_game",
             json!({ "id": 1, "input": input("X", ""), "opts": { "expectedRevision": "a" } }),
+        ),
+        (
+            "set_favorite",
+            json!({ "id": 1, "favorite": true, "opts": { "expectedRevision": "a" } }),
         ),
         (
             "delete_game",

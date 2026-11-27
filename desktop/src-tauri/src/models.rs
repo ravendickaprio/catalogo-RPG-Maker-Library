@@ -79,6 +79,39 @@ pub struct CountItem {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EstadoIdiomaCount {
+    pub estado: String,
+    pub idioma: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cobertura {
+    pub con_portada: i64,
+    pub con_descripcion: i64,
+    pub con_tags: i64,
+    pub con_ruta: i64,
+}
+
+/// Estadísticas de solo lectura de la biblioteca (Fase 8, ADR-017).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dashboard {
+    pub total: i64,
+    pub estados: Vec<CountItem>,
+    pub idiomas: Vec<CountItem>,
+    pub tipos: Vec<CountItem>,
+    pub paginas: Vec<CountItem>,
+    pub puntuaciones: Vec<CountItem>,
+    pub estado_idioma: Vec<EstadoIdiomaCount>,
+    pub cobertura: Cobertura,
+    pub top_tags: Vec<CountItem>,
+    pub elapsed_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LibraryInfo {
     pub db_file_name: String,
     pub read_only: bool,

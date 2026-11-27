@@ -1,13 +1,14 @@
 import { forwardRef, useCallback, useEffect, useState } from "react";
-import { createGame, deleteGame, getGame, normalizeError, updateGame } from "../api/client";
+import { createGame, deleteGame, getGame, normalizeError, setFavorite, updateGame } from "../api/client";
 import type { AppError, GameDetail as Detail, GameInput, Vocabulary } from "../api/types";
 import CoverImage from "./CoverImage";
 import { estadoClass } from "../lib/estado";
 import ConfirmDialog from "./ConfirmDialog";
 import GameForm from "./GameForm";
+import { isFavorite } from "../lib/favorites";
 
 export interface DetailCommand {
-  kind: "edit" | "delete";
+  kind: "edit" | "delete" | "favorite";
   n: number;
 }
 
@@ -29,6 +30,8 @@ interface Props {
   /** The cover was replaced/removed (saved immediately, independent of the text fields). */
   onCoverChanged?: (game: Detail) => void;
   onDeleted?: (id: number) => void;
+  /** The favorite tag was added/removed (saved immediately). */
+  onFavoriteChanged?: (game: Detail, favorite: boolean) => void;
   onCancelCreate?: () => void;
   onToast?: (msg: string) => void;
 }
@@ -47,6 +50,7 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
     onSaved,
     onCoverChanged,
     onDeleted,
+    onFavoriteChanged,
     onCancelCreate,
     onToast,
   },
@@ -128,7 +132,11 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
 
   useEffect(() => {
     if (!command || creating || !shown) return;
-    if (command.kind === "edit" && canWrite) startEdit();
+    if (command.kind === "favorite") {
+      if (!canWrite) onToast?.("Modo solo lectura: no se puede modificar la biblioteca");
+      else if (editing) onToast?.("Termina o cancela la edición antes de cambiar los favoritos");
+      else void toggleFavorite();
+    } else if (command.kind === "edit" && canWrite) startEdit();
     else if (command.kind === "delete" && canWrite) setConfirmDelete(true);
     else if (!canWrite) onToast?.("Modo solo lectura: no se puede modificar la biblioteca");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,6 +186,35 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
         onMissing?.();
         onToast?.("El juego fue eliminado por otra aplicación");
       } else setFormError(err.message);
+    }
+  };
+
+  /** Flips the Favorito link only (`set_favorite`, checked against the revision shown; other fields untouched). */
+  const toggleFavorite = async () => {
+    if (!game || saving || readOnly) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      const favorite = !isFavorite(game.tags);
+      const g = await setFavorite(game.id, favorite, game.revision);
+      setGame(g);
+      onFavoriteChanged?.(g, favorite);
+    } catch (e) {
+      const err = normalizeError(e);
+      if (err.kind === "Conflict") {
+        onToast?.("El juego cambió en otra aplicación; se recargó. Inténtalo de nuevo.");
+        try {
+          setGame(await getGame(game.id));
+        } catch {
+          /* ignored: the next refresh will show the real state */
+        }
+      } else if (err.kind === "NotFound") {
+        onMissing?.();
+        onToast?.("El juego ya no existe");
+      } else if (err.kind === "Busy") onToast?.("La base está ocupada por otra aplicación; inténtalo de nuevo");
+      else onToast?.(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -254,7 +291,18 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
           </div>
           <h2>{shown.titulo}</h2>
           <div className="dialog-actions detail-actions">
-            <button type="button" onClick={startEdit} disabled={!canWrite} title={canWrite ? "Editar este juego" : "Modo solo lectura: actívalo en Ajustes para editar"}>
+            <button
+              type="button"
+              className="fav-btn"
+              aria-pressed={isFavorite(shown.tags)}
+              aria-label="Favorito"
+              title={canWrite ? (isFavorite(shown.tags) ? "Quitar de favoritos" : "Marcar como favorito") : "Modo solo lectura: actívalo en Ajustes para editar"}
+              disabled={!canWrite || saving}
+              onClick={() => void toggleFavorite()}
+            >
+              {isFavorite(shown.tags) ? "★" : "☆"}
+            </button>
+            <button type="button" onClick={startEdit} disabled={!canWrite || saving} title={canWrite ? "Editar este juego" : "Modo solo lectura: actívalo en Ajustes para editar"}>
               Editar
             </button>
             <button type="button" className="danger" onClick={() => setConfirmDelete(true)} disabled={!canWrite} title={canWrite ? "Eliminar este juego" : "Modo solo lectura: actívalo en Ajustes para eliminar"}>

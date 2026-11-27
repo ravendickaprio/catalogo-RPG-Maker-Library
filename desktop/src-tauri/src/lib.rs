@@ -29,6 +29,7 @@ pub fn app_builder<R: tauri::Runtime>(
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_library_info,
+            commands::get_dashboard,
             commands::search_games,
             commands::get_game,
             commands::get_cover,
@@ -40,6 +41,7 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::get_session_info,
             commands::create_game,
             commands::update_game,
+            commands::set_favorite,
             commands::delete_game,
             commands::create_backup,
             commands::set_db_path,

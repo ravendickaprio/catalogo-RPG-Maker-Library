@@ -102,6 +102,103 @@ pub fn library_info(
     })
 }
 
+fn sorted_counts(m: std::collections::HashMap<String, i64>) -> Vec<CountItem> {
+    let mut v: Vec<CountItem> = m
+        .into_iter()
+        .map(|(value, count)| CountItem { value, count })
+        .collect();
+    v.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.cmp(&b.value)));
+    v
+}
+
+/// Statistics for the dashboard (read-only). One pass over `juegos` reads only the
+/// columns before `imagen` plus `length(imagen)`; the BLOB itself is never loaded.
+/// Empty/NULL grouping values are reported as `""`.
+///
+/// Score buckets: `puntuacion` (NULL or non-numeric -> 0) is clamped to `0.0..=5.0` and
+/// rounded to the nearest 0.5 (`round(x * 2) / 2`, halves away from zero, so 4.25 -> "4.5").
+/// All 11 buckets "0.0".."5.0" are always returned, in ascending order.
+pub fn dashboard(conn: &Connection) -> Result<Dashboard, AppError> {
+    use std::collections::HashMap;
+    let start = Instant::now();
+    let mut total = 0i64;
+    let mut estados: HashMap<String, i64> = HashMap::new();
+    let mut idiomas: HashMap<String, i64> = HashMap::new();
+    let mut tipos: HashMap<String, i64> = HashMap::new();
+    let mut paginas: HashMap<String, i64> = HashMap::new();
+    let mut ei: HashMap<(String, String), i64> = HashMap::new();
+    let mut buckets = [0i64; 11];
+    let mut cob = Cobertura {
+        con_portada: 0,
+        con_descripcion: 0,
+        con_tags: 0,
+        con_ruta: 0,
+    };
+    {
+        let mut st = conn.prepare(
+            "SELECT coalesce(estado,''), coalesce(idioma,''), coalesce(tipo,''), coalesce(pagina,''),              CAST(coalesce(puntuacion,0) AS REAL),              (imagen IS NOT NULL AND length(imagen) > 0),              (trim(coalesce(descripcion,''), ' ' || char(9) || char(10) || char(13)) <> ''),              (trim(coalesce(ruta,''), ' ' || char(9) || char(10) || char(13)) <> ''),              EXISTS(SELECT 1 FROM juego_tags jt WHERE jt.juego_id = juegos.id)              FROM juegos",
+        )?;
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            total += 1;
+            let estado: String = r.get(0)?;
+            let idioma: String = r.get(1)?;
+            let tipo: String = r.get(2)?;
+            let pagina: String = r.get(3)?;
+            let p: f64 = r.get(4)?;
+            let p = if p.is_nan() { 0.0 } else { p.clamp(0.0, 5.0) };
+            buckets[((p * 2.0).round() as usize).min(10)] += 1;
+            cob.con_portada += r.get::<_, i64>(5)?;
+            cob.con_descripcion += r.get::<_, i64>(6)?;
+            cob.con_ruta += r.get::<_, i64>(7)?;
+            cob.con_tags += r.get::<_, i64>(8)?;
+            *estados.entry(estado.clone()).or_insert(0) += 1;
+            *idiomas.entry(idioma.clone()).or_insert(0) += 1;
+            *tipos.entry(tipo).or_insert(0) += 1;
+            *paginas.entry(pagina).or_insert(0) += 1;
+            *ei.entry((estado, idioma)).or_insert(0) += 1;
+        }
+    }
+    let mut estado_idioma: Vec<EstadoIdiomaCount> = ei
+        .into_iter()
+        .map(|((estado, idioma), count)| EstadoIdiomaCount {
+            estado,
+            idioma,
+            count,
+        })
+        .collect();
+    estado_idioma.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.estado.cmp(&b.estado))
+            .then_with(|| a.idioma.cmp(&b.idioma))
+    });
+    let puntuaciones = buckets
+        .iter()
+        .enumerate()
+        .map(|(i, &count)| CountItem {
+            value: format!("{:.1}", i as f64 / 2.0),
+            count,
+        })
+        .collect();
+    let top_tags = counts(
+        conn,
+        "SELECT t.nombre, count(*) AS c FROM tags t JOIN juego_tags jt ON jt.tag_id = t.id          JOIN juegos j ON j.id = jt.juego_id GROUP BY t.id          ORDER BY c DESC, t.nombre COLLATE BINARY ASC LIMIT 15",
+    )?;
+    Ok(Dashboard {
+        total,
+        estados: sorted_counts(estados),
+        idiomas: sorted_counts(idiomas),
+        tipos: sorted_counts(tipos),
+        paginas: sorted_counts(paginas),
+        puntuaciones,
+        estado_idioma,
+        cobertura: cob,
+        top_tags,
+        elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+    })
+}
+
 fn summary_from_row(r: &Row) -> rusqlite::Result<GameSummary> {
     Ok(GameSummary {
         id: r.get(0)?,

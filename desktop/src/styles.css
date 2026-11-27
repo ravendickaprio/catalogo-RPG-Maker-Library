@@ -221,3 +221,40 @@ img.cover-default { object-fit: contain; background: #fff; }
 .maint-batch { border: 1px dashed var(--border); border-radius: 8px; margin-top: 10px; }
 .link-btn { background: none; border: none; padding: 0; text-align: left; text-decoration: underline; cursor: pointer; color: inherit; font: inherit; }
 .queue-cover { width: 160px; height: 160px; object-fit: cover; border-radius: 8px; flex: none; }
+
+/* Fase 8: dashboard, review, tools menu, shortcuts */
+.tools-menu { position: relative; }
+.tools-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 12rem; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+.tools-list button { text-align: left; border: none; background: transparent; }
+.tools-list button:hover, .tools-list button:focus-visible { background: var(--sel); }
+.fav-btn { font-size: 1.1rem; line-height: 1; min-width: 2.2rem; }
+.fav-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dash-dialog { width: min(1100px, 100%); }
+.dash-total { font-size: 1.1rem; margin: 4px 0 8px; }
+.dash-elapsed { font-size: .75rem; }
+.dash-tiles { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 8px; padding: 0; margin: 8px 0; }
+.dash-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.dash-tile-pct { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dash-tile-label { font-weight: 600; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 10px; margin: 10px 0; }
+.dash-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 10px 0; }
+.dash-grid .dash-card { margin: 0; }
+.dash-card h3 { margin: 0 0 6px; font-size: 1rem; }
+.dash-table { width: 100%; border-collapse: collapse; }
+.dash-table th, .dash-table td { padding: 2px 6px; text-align: left; font-weight: normal; }
+.dash-label { max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dash-pct { color: var(--muted); }
+.dash-bar-cell { width: 40%; }
+.dash-bar { height: 10px; min-width: 2px; border-radius: 3px; background: var(--accent); }
+.dash-pivot th, .dash-pivot td { white-space: nowrap; }
+.review-dialog { width: min(1200px, 100%); }
+.review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 8px 0; }
+.review-controls .form-row { margin: 0; }
+.review-controls input[type="number"] { width: 5rem; }
+.review-body { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; gap: 12px; align-items: start; }
+.review-list { max-height: 65vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.review-list ul { list-style: none; margin: 0; padding: 0; }
+.review-edit { min-width: 0; }
+@media (max-width: 760px) { .review-body { grid-template-columns: 1fr; } .review-list { max-height: 25vh; } }
+kbd { font-family: inherit; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: .85rem; white-space: nowrap; }
