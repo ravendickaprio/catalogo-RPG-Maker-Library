@@ -110,7 +110,7 @@ export default function CoverEditor({ game, onChanged, onError }: Props) {
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
       >
-        <CoverImage id={game.id} hasCover={game.hasCover} alt={`Portada de ${game.titulo}`} placeholder={() => <div className="cover-placeholder">Sin portada</div>} />
+        <CoverImage id={game.id} hasCover={game.hasCover} alt={`Portada de ${game.titulo}`} />
         <p className="note">{busy ? "Procesando imagen…" : "Arrastra una imagen aquí o pégala con Ctrl+V."}</p>
       </div>
       <div className="dialog-actions">

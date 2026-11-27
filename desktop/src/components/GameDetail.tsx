@@ -250,7 +250,7 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
       {!showForm && shown && !loading && (
         <>
           <div className="cover-box">
-            <CoverImage id={shown.id} hasCover={shown.hasCover} alt={`Portada de ${shown.titulo}`} placeholder={() => <div className="cover-placeholder">Sin portada</div>} />
+            <CoverImage id={shown.id} hasCover={shown.hasCover} alt={`Portada de ${shown.titulo}`} />
           </div>
           <h2>{shown.titulo}</h2>
           <div className="dialog-actions detail-actions">

@@ -18,3 +18,4 @@ export function writePref(key: string, value: string): void {
 export const PREF_THEME = "rpglib.theme";
 export const PREF_VIEW = "rpglib.view";
 export const PREF_SIDEBAR = "rpglib.sidebar";
+export const PREF_WELCOME = "rpglib.welcome";

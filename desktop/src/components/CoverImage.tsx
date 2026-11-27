@@ -1,20 +1,24 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { coverUrl, useCoverTag } from "../lib/cover";
+import defaultCover from "../assets/default-cover.webp";
 
 interface Props {
   id: number;
   hasCover: boolean;
   alt: string;
-  /** Rendered when there is no cover or it failed to load. */
-  placeholder: (failed: boolean) => ReactNode;
   className?: string;
 }
 
-/** Cover served by the `cover` protocol: native lazy loading, falls back to the placeholder on error. */
-export default function CoverImage({ id, hasCover, alt, placeholder, className }: Props) {
+/**
+ * Cover served by the `cover` protocol: native lazy loading. Without a cover (or if it fails to
+ * load) shows the bundled default image; nothing is written to the database.
+ */
+export default function CoverImage({ id, hasCover, alt, className }: Props) {
   const tag = useCoverTag(id);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [id, tag, hasCover]);
-  if (!hasCover || failed) return <>{placeholder(failed)}</>;
+  if (!hasCover || failed) {
+    return <img className={(className ? className + " " : "") + "cover-default"} src={defaultCover} alt={alt ? "Sin portada" : ""} title="Sin portada" draggable={false} />;
+  }
   return <img className={className} src={coverUrl(id, tag)} alt={alt} loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />;
 }

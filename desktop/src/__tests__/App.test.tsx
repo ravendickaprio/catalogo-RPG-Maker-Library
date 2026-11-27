@@ -19,6 +19,7 @@ const searchCalls = () => mockInvoke.mock.calls.filter((c) => c[0] === "search_g
 
 beforeEach(() => {
   localStorage.clear();
+  localStorage.setItem("rpglib.welcome", "off");
   infoTotal = 3;
   dataChanged = false;
   mockInvoke.mockReset();

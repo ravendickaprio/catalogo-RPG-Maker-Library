@@ -105,7 +105,7 @@ export default function SuggestionDialog({ onClose, onShowInList }: Props) {
         {result && game && (
           <div className={"suggest-body" + (loading ? " dim" : "")}>
             <div className="cover-box">
-              <CoverImage id={game.id} hasCover={game.hasCover} alt={`Portada de ${game.titulo}`} placeholder={() => <div className="cover-placeholder">Sin portada</div>} />
+              <CoverImage id={game.id} hasCover={game.hasCover} alt={`Portada de ${game.titulo}`} />
             </div>
             <div className="suggest-info">
               <h3 className="suggest-game-title">{game.titulo}</h3>

@@ -50,8 +50,7 @@ describe("coverUrl / validation", () => {
 
 describe("CoverImage", () => {
   it("uses lazy async <img>, changes URL on invalidation and falls back on error", () => {
-    const ph = (failed: boolean) => <span data-testid="ph">{failed ? "falló" : "vacío"}</span>;
-    const { rerender } = render(<CoverImage id={42} hasCover alt="x" placeholder={ph} />);
+    const { rerender } = render(<CoverImage id={42} hasCover alt="x" />);
     const img = screen.getByRole("img") as HTMLImageElement;
     expect(img.getAttribute("loading")).toBe("lazy");
     expect(img.getAttribute("decoding")).toBe("async");
@@ -61,10 +60,13 @@ describe("CoverImage", () => {
     expect((screen.getByRole("img") as HTMLImageElement).src).not.toBe(before);
     act(() => clearCoverCache());
     fireEvent.error(screen.getByRole("img"));
-    expect(screen.queryByRole("img")).toBeNull();
-    expect(screen.getByTestId("ph").textContent).toBe("falló");
-    rerender(<CoverImage id={42} hasCover={false} alt="x" placeholder={ph} />);
-    expect(screen.getByTestId("ph").textContent).toBe("vacío");
+    // On error: the bundled default image, with an accessible "Sin portada" label.
+    const fallback = screen.getByRole("img") as HTMLImageElement;
+    expect(fallback.alt).toBe("Sin portada");
+    expect(fallback.className).toContain("cover-default");
+    expect(fallback.src).not.toMatch(/\/42\?r=/);
+    rerender(<CoverImage id={42} hasCover={false} alt="x" />);
+    expect((screen.getByRole("img") as HTMLImageElement).alt).toBe("Sin portada");
   });
 });
 

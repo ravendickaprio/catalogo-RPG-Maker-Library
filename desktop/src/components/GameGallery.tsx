@@ -42,11 +42,6 @@ function Card({ game, width, selected, onSelect, onOpen }: {
           id={game.id}
           hasCover={game.hasCover}
           alt=""
-          placeholder={(failed) => (
-            <span className="card-ph" aria-hidden="true">
-              {game.hasCover && !failed ? "" : "Sin portada"}
-            </span>
-          )}
         />
       </div>
       <div className="card-info">

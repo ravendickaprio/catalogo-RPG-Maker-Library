@@ -5,6 +5,8 @@ import CommandPalette from "./components/CommandPalette";
 import ConfirmDialog from "./components/ConfirmDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import ImportDialog from "./components/ImportDialog";
+import WelcomeScreen, { welcomeOnStartup } from "./components/WelcomeScreen";
+import logo from "./assets/logo.webp";
 import GameDetail, { type DetailCommand } from "./components/GameDetail";
 import GameGallery from "./components/GameGallery";
 import GameList from "./components/GameList";
@@ -42,6 +44,7 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(welcomeOnStartup);
   const [command, setCommand] = useState<DetailCommand | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const dirtyRef = useRef(false);
@@ -244,6 +247,7 @@ export default function App() {
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
       { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
       { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
+      { id: "welcome", label: "Pantalla de bienvenida", run: () => setWelcomeOpen(true) },
       { id: "view-list", label: "Vista lista", run: () => setView("list") },
       { id: "view-gallery", label: "Vista galería", run: () => setView("gallery") },
       ...THEMES.map((t) => ({ id: `theme-${t.value}`, label: `Tema: ${t.label}`, run: () => setTheme(t.value) })),
@@ -286,7 +290,10 @@ export default function App() {
         >
           ☰ Filtros
         </button>
-        <h1>RPG Maker Library</h1>
+        <h1>
+          <img className="app-logo" src={logo} alt="" width={28} height={28} />
+          RPG Maker Library
+        </h1>
         {info && (
           <>
             <span className="db-name" title="Base de datos">
@@ -448,6 +455,7 @@ export default function App() {
           <p>Tienes cambios sin guardar en el formulario. Si continúas, se perderán.</p>
         </ConfirmDialog>
       )}
+      {welcomeOpen && <WelcomeScreen total={info?.total ?? null} error={infoError?.message ?? null} onClose={() => setWelcomeOpen(false)} />}
       {paletteOpen && <CommandPalette actions={actions} onClose={() => setPaletteOpen(false)} />}
       {toast && (
         <div className="toast" role="status" aria-live="polite">

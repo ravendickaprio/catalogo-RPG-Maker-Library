@@ -32,6 +32,7 @@ const err = (kind: string, message = "m") => Promise.reject({ kind, message });
 let handlers: Record<string, (args: Record<string, unknown>) => unknown>;
 beforeEach(() => {
   localStorage.clear();
+  localStorage.setItem("rpglib.welcome", "off");
   handlers = {};
   mockInvoke.mockReset();
   mockInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
