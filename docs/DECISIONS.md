@@ -39,6 +39,7 @@ Formato: contexto → decisión → consecuencias. Fecha de referencia: 2026-11-
 ## ADR-006 — Frontend sin framework CSS en la Fase 1
 **Decisión.** Vite + React + TypeScript con CSS propio y variables (tema claro/oscuro según `prefers-color-scheme`). Listas con TanStack Virtual. La elección de Tailwind/shadcn se decide en la Fase 3.
 **Motivo.** Mantener el prototipo pequeño y auditable.
+**Revisión (Fase 3).** Se mantiene el CSS propio con variables y 4 temas (Sistema, Claro, Oscuro y Noche). No se adopta Tailwind/shadcn: la UI cubre las necesidades actuales sin dependencias extra.
 
 ## ADR-007 — Portadas en la Fase 1
 **Hechos.** 249/1160 registros tienen `imagen`, todos WebP (magic `RIFF`), con un máximo de 27,8 KB.
@@ -80,3 +81,18 @@ Formato: contexto → decisión → consecuencias. Fecha de referencia: 2026-11-
 - Paridad con el legacy: los empates de `title_desc` se ordenan por `id ASC`. Un código con normalización de 1–2 caracteres usa LIKE sobre `codigo_norm`. Las consultas no ASCII en la ruta LIKE se pliegan con `rpg_fold()`, que aplica el `to_lowercase` de Rust. **No** se replica la coincidencia entre campos concatenados del legacy.
 - **Índice `titulo COLLATE NOCASE`:** lleva el orden por título y la paginación profunda de ~60 ms a ~3 ms con 50k registros, pero empeora el orden por código (74 → 189 ms) por el orden de join que elige el planificador. Se **difiere** a la primera migración (Fase 4, ADR-009), junto con un ajuste del join del orden por código y una nueva medición. Los índices de `codigo` e `idioma` se descartan; el de `estado` es opcional.
 **Consecuencias.** Con 50k registros, todas las rutas medidas quedan en ≤ ~100 ms sin tocar la DB. Con la biblioteca real (1160), todo está por debajo de 2,1 ms.
+
+## ADR-012 — Escritura sobre la DB real (Fase 4); sustituye las guardas del ADR-003
+**Contexto.** El 2026-11-27 el usuario autorizó trabajar directamente sobre `juegos.db`. Mantiene varios backups fuera del repositorio.
+**Decisión.**
+- Se elimina el rechazo a `juegos.db`. La ruta sale de `RPGLIB_DB_PATH`, luego de los ajustes de la app (`settings.json` en el directorio de configuración de Tauri) y, en último caso, de la copia de desarrollo.
+- La app abre en lectura y escritura salvo que se active el modo solo lectura en los ajustes.
+- **Salvaguardas que se mantienen:**
+  - backup automático antes de la primera escritura de cada sesión, con rotación de 20 en `<dbDir>/backups/`;
+  - control de concurrencia optimista mediante `revision`;
+  - transacciones `BEGIN IMMEDIATE`;
+  - validación de esquema al abrir, sin crear ni alterar nada;
+  - no forzar valores desconocidos de estado, idioma o tipo;
+  - normalización NFC.
+- Los tests y benchmarks se siguen ejecutando sobre copias o DB sintéticas.
+**Consecuencias.** La app Python sigue siendo compatible: solo se escriben las columnas existentes y los triggers mantienen la búsqueda. `backups/` se añade a `.gitignore`.
