@@ -46,3 +46,37 @@ Formato: contexto → decisión → consecuencias. Fecha de referencia: 2026-11-
 
 ## ADR-008 — Superficie Tauri mínima
 **Decisión.** Sin plugins (ni opener, ni fs, ni shell, ni dialog). Capability `core:default` únicamente. CSP restrictiva (`default-src 'self'; img-src 'self' data:`). Comandos expuestos: `get_library_info`, `search_games`, `get_game`, `get_cover`, `suggest_game`.
+
+## ADR-009 — Estrategia de migraciones (Fase 2: decisión; implementación con el primer cambio de esquema)
+**Contexto.** El legacy crea y altera el esquema de forma perezosa (`CREATE IF NOT EXISTS` + `ALTER`) y no usa `user_version` (= 0). Una herramienta externa añadió `app_metadata(busqueda_schema=1)`, `juegos_busqueda`, `juegos_fts` y 9 triggers. Tanto la app Python como los editores escriben sobre la misma DB.
+**Decisión.**
+- **Versionado propio en `app_metadata`**, clave `desktop_schema_version`. No se usa `user_version`, para no chocar con herramientas que pudieran usarlo, y no se modifica `busqueda_schema`.
+- **Solo migraciones aditivas y compatibles con el legacy:** índices (`CREATE INDEX IF NOT EXISTS ix_…`) y tablas nuevas con prefijo `desktop_`. Nunca se renombran, eliminan ni cambian columnas o triggers existentes. Toda migración se prueba antes sobre DB sintéticas y sobre la copia.
+- **Proceso:** se ejecuta por acción explícita del usuario, nunca automáticamente al abrir. Pasos:
+  1. Backup con la API `backup` de SQLite en `<db>.backup-<AAAAMMDD-HHMMSS>-pre-v<N>`.
+  2. Migración dentro de `BEGIN IMMEDIATE … COMMIT`.
+  3. Comprobación de `PRAGMA integrity_check`, `foreign_key_check` y `INSERT INTO juegos_fts(juegos_fts) VALUES('integrity-check')`.
+  4. Si algo falla, rollback e informe; el backup se conserva.
+- **Reparaciones de datos** (p. ej. los 906 títulos `RY …`): son "migraciones de datos" con vista previa, backup y un registro de los cambios para poder revertirlos. Requieren aprobación del usuario caso por caso.
+**Consecuencias.** La app Python sigue funcionando sin cambios. No se implementa código de migración hasta que haga falta el primer cambio (índices, si el ADR-011 los justifica, o el CRUD de la Fase 4).
+
+## ADR-010 — Concurrencia con la app Python
+**Hechos.** `journal_mode = delete` (rollback journal). Python `sqlite3` usa `timeout = 5 s` por defecto. Los editores hacen commit tras cada guardado.
+**Decisión.**
+- **Mantener el rollback journal (no WAL)** mientras coexistan las dos apps. WAL es persistente, cambia el formato en disco (`-wal`, `-shm`) y afecta a todas las herramientas. Se reevaluará cuando la app Python se retire.
+- Lecturas cortas (consultas paginadas, sin transacciones largas abiertas) y `busy_timeout`: 2 s para lectura y 5 s para escritura cuando exista el CRUD.
+- Las escrituras de la Fase 4 usarán transacciones `BEGIN IMMEDIATE`, breves y sin interacción de UI dentro de ellas. Si devuelven `SQLITE_BUSY`, se muestra un error recuperable ("la base está ocupada por otra aplicación").
+- **Detección de cambios externos:** al recuperar el foco de la ventana (Fase 3) se consulta `PRAGMA data_version`. Si cambió, se refrescan la lista y el detalle sin perder la selección.
+- Recomendación de uso: no editar el mismo juego en ambas apps a la vez. La última escritura gana, y la Fase 4 lo detectará comparando el registro antes de guardar.
+
+## ADR-011 — Rendimiento de consultas sin cambiar el esquema; índice de título diferido (Fase 2)
+**Hechos medidos** (sobre la DB sintética de 50k registros; detalle en `BENCHMARKS.md`):
+- En `juegos`, la columna `imagen` (BLOB) precede a `ruta`, `codigo`, `pagina`, `tipo` y `puntuacion`. Leer esas columnas recorre las páginas de overflow del BLOB: `count(*) WHERE codigo<>'x'` tarda 119 ms, frente a 29 ms con `estado`.
+- `juegos_busqueda` (sin BLOB) es barata: 19 ms.
+**Decisión.**
+- La búsqueda se hace en dos fases. Primero se obtienen los ids ordenados usando solo columnas anteriores al BLOB o `juegos_busqueda`. Después se leen como mucho 200 filas de la página.
+- La sugerencia elige el id en Rust (splitmix64) en lugar de `ORDER BY random()`.
+- `library_info` se resuelve con un único `GROUP BY estado, idioma` y se cachea durante la sesión.
+- Paridad con el legacy: los empates de `title_desc` se ordenan por `id ASC`. Un código con normalización de 1–2 caracteres usa LIKE sobre `codigo_norm`. Las consultas no ASCII en la ruta LIKE se pliegan con `rpg_fold()`, que aplica el `to_lowercase` de Rust. **No** se replica la coincidencia entre campos concatenados del legacy.
+- **Índice `titulo COLLATE NOCASE`:** lleva el orden por título y la paginación profunda de ~60 ms a ~3 ms con 50k registros, pero empeora el orden por código (74 → 189 ms) por el orden de join que elige el planificador. Se **difiere** a la primera migración (Fase 4, ADR-009), junto con un ajuste del join del orden por código y una nueva medición. Los índices de `codigo` e `idioma` se descartan; el de `estado` es opcional.
+**Consecuencias.** Con 50k registros, todas las rutas medidas quedan en ≤ ~100 ms sin tocar la DB. Con la biblioteca real (1160), todo está por debajo de 2,1 ms.

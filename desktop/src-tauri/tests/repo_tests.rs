@@ -121,6 +121,7 @@ fn req(q: &str) -> SearchRequest {
         query: q.into(),
         estado: None,
         idioma: None,
+        tag: None,
         sort: SortKey::TitleAsc,
         offset: 0,
         limit: 50,
@@ -588,4 +589,171 @@ fn db_path_guard() {
     assert!(db::check_path_allowed(Path::new("a/juegos.db"), true).is_ok());
     assert!(db::check_path_allowed(Path::new("a/juegos.dev.db"), false).is_ok());
     assert!(db::check_path_allowed(Path::new("a/copy.db"), false).is_ok());
+}
+
+#[test]
+fn search_tag_filter() {
+    let (_d, c) = open_std();
+    let mut r = req("");
+    r.tag = Some("RPG".into()); // stored as 'rpg': NOCASE
+    let p = repo::search(&c, &r, true).unwrap();
+    assert_eq!(titles(&p), vec!["Zeta Quest"]);
+    assert_eq!(p.total, 1);
+    r.tag = Some("fantasía".into());
+    assert_eq!(repo::search(&c, &r, true).unwrap().total, 1);
+    // combined with query and estado
+    r.tag = Some("accion".into());
+    r.query = "quest".into();
+    r.estado = Some("Sin empezar".into());
+    let p = repo::search(&c, &r, true).unwrap();
+    assert_eq!(titles(&p), vec!["Zeta Quest"]);
+    assert_eq!(p.strategy, "fts");
+    r.estado = Some("Terminado".into());
+    assert_eq!(repo::search(&c, &r, true).unwrap().total, 0);
+    // unknown tag
+    r.estado = None;
+    r.tag = Some("no-existe".into());
+    let p = repo::search(&c, &r, true).unwrap();
+    assert_eq!((p.total, p.items.len()), (0, 0));
+    // validation
+    r.tag = Some("x".repeat(101));
+    assert!(matches!(
+        repo::search(&c, &r, true),
+        Err(AppError::InvalidInput(_))
+    ));
+    r.tag = Some("x".repeat(100));
+    assert!(repo::search(&c, &r, true).is_ok());
+}
+
+#[test]
+fn library_info_tags_counts_and_order() {
+    let dir = TempDir::new().unwrap();
+    let rows = vec![
+        Row {
+            tags: &["zeta", "Alfa"],
+            ..row("A", "", "Sin empezar", "Japonés")
+        },
+        Row {
+            tags: &["alfa"],
+            ..row("B", "", "Sin empezar", "Japonés")
+        },
+    ];
+    let p = make_db(&dir, "tg.db", &rows, true);
+    {
+        // tag without games must not be listed
+        let w = Connection::open(&p).unwrap();
+        w.execute("INSERT INTO tags(nombre) VALUES ('huerfano')", [])
+            .unwrap();
+    }
+    let c = db::open_read_only(&p).unwrap();
+    let i = repo::library_info(&c, "tg.db").unwrap();
+    let got: Vec<(&str, i64)> = i.tags.iter().map(|t| (t.value.as_str(), t.count)).collect();
+    assert_eq!(got, vec![("Alfa", 2), ("zeta", 1)]);
+}
+
+#[test]
+fn title_desc_ties_use_id_ascending() {
+    let dir = TempDir::new().unwrap();
+    let rows = vec![
+        row("Same", "A-1", "Sin empezar", "Japonés"),
+        row("zzz", "A-2", "Sin empezar", "Japonés"),
+        row("same", "A-3", "Sin empezar", "Japonés"),
+    ];
+    let p = make_db(&dir, "tie.db", &rows, true);
+    let c = db::open_read_only(&p).unwrap();
+    let mut r = req("");
+    r.sort = SortKey::TitleDesc;
+    let ids: Vec<i64> = repo::search(&c, &r, true)
+        .unwrap()
+        .items
+        .iter()
+        .map(|g| g.id)
+        .collect();
+    assert_eq!(ids, vec![2, 1, 3]);
+}
+
+#[test]
+fn short_normalized_code_matches_by_like() {
+    let (_d, c) = open_std();
+    // "r-y" normalizes to "ry" (2 chars) -> codes containing "ry" (RY-1000, RY-1001)
+    let p = repo::search(&c, &req("r-y"), true).unwrap();
+    assert_eq!(p.strategy, "fts");
+    assert_eq!(titles(&p), vec!["alpha Tale", "Zeta Quest"]);
+    // "ab-" -> norm "ab": AB-5 and ab_77 codes
+    let p = repo::search(&c, &req("ab-"), true).unwrap();
+    assert_eq!(titles(&p), vec!["Epsilon", "Gamma Ray"]);
+    // no cross-field matching (pagina + tipo are not concatenated)
+    let p = repo::search(&c, &req("Aventura Aventura"), true).unwrap();
+    assert_eq!(p.total, 0);
+}
+
+#[test]
+fn like_path_folds_unicode() {
+    let dir = TempDir::new().unwrap();
+    let rows = vec![
+        Row {
+            desc: "Una aventura épica",
+            ..row("Épica Saga", "X-1", "Sin empezar", "Japonés")
+        },
+        row("Plain", "X-2", "Sin empezar", "Inglés"),
+    ];
+    let p = make_db(&dir, "fold.db", &rows, true);
+    let c = db::open_read_only(&p).unwrap();
+    for q in ["é", "É"] {
+        let r = repo::search(&c, &req(q), true).unwrap();
+        assert_eq!(r.strategy, "like", "{q}");
+        assert_eq!(titles(&r), vec!["Épica Saga"], "{q}");
+    }
+    let r = repo::search(&c, &req("zz"), true).unwrap();
+    assert_eq!(r.total, 0);
+    // also without juegos_busqueda
+    let p2 = make_db(&dir, "fold2.db", &rows, false);
+    let c2 = db::open_read_only(&p2).unwrap();
+    let r = repo::search(&c2, &req("É"), false).unwrap();
+    assert_eq!(titles(&r), vec!["Épica Saga"]);
+}
+
+#[test]
+fn code_sort_two_phase_semantics() {
+    let dir = TempDir::new().unwrap();
+    let rows = vec![
+        row("b", "", "Sin empezar", "Japonés"),
+        row("c", "ry-2", "Sin empezar", "Japonés"),
+        row("a", "  ", "Sin empezar", "Japonés"),
+        row("d", "RY-1", "Sin empezar", "Japonés"),
+        row("e", "ry-1", "Sin empezar", "Japonés"),
+    ];
+    let p = make_db(&dir, "code.db", &rows, true);
+    let c = db::open_read_only(&p).unwrap();
+    let mut r = req("");
+    r.sort = SortKey::Code;
+    let page = repo::search(&c, &r, true).unwrap();
+    // codes first (NOCASE, then title); blank codes last, ordered by raw code ("" < "  ")
+    assert_eq!(titles(&page), vec!["d", "e", "c", "b", "a"]);
+    // limit/offset keep order across the two phases
+    r.limit = 2;
+    r.offset = 2;
+    let page = repo::search(&c, &r, true).unwrap();
+    assert_eq!(titles(&page), vec!["c", "b"]);
+    assert_eq!(page.total, 5);
+}
+
+#[test]
+fn suggest_is_roughly_uniform() {
+    let dir = TempDir::new().unwrap();
+    let mut rows: Vec<Row> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|t| row(t, "", "Sin empezar", "Japonés"))
+        .collect();
+    rows.push(row("done", "", "Terminado", "Japonés"));
+    let p = make_db(&dir, "sg.db", &rows, true);
+    let c = db::open_read_only(&p).unwrap();
+    let mut seen = std::collections::HashMap::new();
+    for _ in 0..2000 {
+        let s = repo::suggest(&c, &SuggestRequest::default()).unwrap();
+        *seen.entry(s.game.unwrap().summary.titulo).or_insert(0) += 1;
+    }
+    assert_eq!(seen.len(), 5, "{seen:?}");
+    assert!(!seen.contains_key("done"));
+    assert!(seen.values().all(|&n| n > 250), "{seen:?}");
 }

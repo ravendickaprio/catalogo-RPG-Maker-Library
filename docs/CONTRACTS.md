@@ -1,4 +1,4 @@
-# Contratos frontend ↔ backend (Fase 1)
+# Contratos frontend ↔ backend (Fase 1 + cambios Fase 2)
 
 Comandos Tauri invocados con `invoke(nombre, args)`. Los DTO se serializan en **camelCase** (`#[serde(rename_all = "camelCase")]`). Los errores siguen siempre la forma `AppError { kind, message }`. Todos los comandos son `async` y ejecutan SQLite con `spawn_blocking`. La conexión es de solo lectura (ADR-003).
 
@@ -11,6 +11,7 @@ interface SearchRequest {
   query: string;          // ≤ 200 caracteres tras trim; "" = sin texto
   estado?: string | null; // valor literal de juegos.estado; null = todos
   idioma?: string | null; // valor literal de juegos.idioma; null = todos
+  tag?: string | null;    // [Fase 2] nombre de tag, comparación NOCASE; null = todos
   sort: SortKey;
   offset: number;         // ≥ 0
   limit: number;          // 1..=200
@@ -45,6 +46,7 @@ interface LibraryInfo {
   ftsInSync: boolean;     // count(juegos) == count(juegos_busqueda)
   estados: CountItem[];   // orden por count desc
   idiomas: CountItem[];
+  tags: CountItem[];      // [Fase 2] tags con nº de juegos, orden nombre NOCASE
   sqliteVersion: string;
 }
 
@@ -71,8 +73,9 @@ interface AppError { kind: "NotFound" | "InvalidInput" | "Database" | "Config"; 
 ## Reglas de backend
 - Nunca seleccionar `imagen` excepto en `get_cover`. `hasCover = coalesce(length(imagen),0) > 0`.
 - Sin N+1: las tags del detalle se obtienen en una sola consulta. Los listados no incluyen tags.
-- Orden: `title_asc` = `titulo COLLATE NOCASE, id`; `title_desc` = inverso; `code` = sin código al final, luego `codigo COLLATE NOCASE, titulo`; `status` = `CASE estado WHEN 'Sin empezar' THEN 0 WHEN 'Empezado' THEN 1 WHEN 'Terminado' THEN 2 ELSE 3 END, titulo`; `language` = `idioma COLLATE NOCASE, titulo`; `recent` = `id DESC`.
-- Validación: query ≤ 200 caracteres, limit 1..=200, offset ≥ 0, id > 0. Si falla → `InvalidInput`.
+- Orden: `title_asc` = `titulo COLLATE NOCASE, id`; `title_desc` = `titulo COLLATE NOCASE DESC, id ASC` (igual que el sort estable invertido del legacy, Fase 2); `code` = sin código al final, luego `codigo COLLATE NOCASE, titulo`; `status` = `CASE estado WHEN 'Sin empezar' THEN 0 WHEN 'Empezado' THEN 1 WHEN 'Terminado' THEN 2 ELSE 3 END, titulo`; `language` = `idioma COLLATE NOCASE, titulo`; `recent` = `id DESC`.
+- Filtro tag [Fase 2]: `j.id IN (SELECT jt.juego_id FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id WHERE t.nombre = ? COLLATE NOCASE)`.
+- Validación: tag ≤ 100 caracteres; query ≤ 200 caracteres, limit 1..=200, offset ≥ 0, id > 0. Si falla → `InvalidInput`.
 - Elegibilidad de la sugerencia: `lower(trim(coalesce(estado,''))) <> 'terminado'`. Con `excludeId` y más de un candidato, se excluye ese id.
 
 ## Reglas de frontend

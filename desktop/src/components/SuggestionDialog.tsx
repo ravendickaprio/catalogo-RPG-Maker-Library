@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { suggestGame, normalizeError } from "../api/client";
-import type { AppError, Suggestion } from "../api/types";
+import type { AppError, GameDetail, Suggestion } from "../api/types";
 import { useCover } from "../hooks/useCover";
 import { RequestSequencer } from "../lib/requestSequencer";
 import { GameFields } from "./GameDetail";
 
 interface Props {
   onClose: () => void;
-  onShowInList: (id: number) => void;
+  onShowInList: (game: GameDetail) => void;
 }
 
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -132,7 +132,7 @@ export default function SuggestionDialog({ onClose, onShowInList }: Props) {
           <button type="button" onClick={load} disabled={loading}>
             Otra sugerencia
           </button>
-          <button type="button" disabled={!game} onClick={() => game && onShowInList(game.id)}>
+          <button type="button" disabled={!game} onClick={() => game && onShowInList(game)}>
             Ver en la lista
           </button>
           <button type="button" className="primary" onClick={onClose}>

@@ -40,12 +40,46 @@ Los benchmarks están en `docs/BENCHMARKS.md`.
 - Icono provisional (placeholder generado).
 - No hay benchmarks a escala (1k–50k) ni latencia medida de extremo a extremo en la UI.
 
-## Fase 2 — Motor de búsqueda (plan propuesto, no iniciado)
-1. **Generador de DB sintéticas** (1k/5k/10k/25k/50k) a partir de `tests/fixtures/schema.sql`, con distribución similar a la real y sin datos personales. Bench en todas las escalas y con `EXPLAIN QUERY PLAN`.
-2. **Paridad con el legacy**: test que compare ids y orden de `search` con una reimplementación fiel de `_filtrar()` sobre la copia. Documentar las diferencias intencionales (casefold, acentos).
-3. **Filtro por tag** (falta respecto al legacy) e índices evaluados con medición previa (`estado`, `idioma`, `codigo`). No se crean índices sobre la DB real sin migración.
-4. **Estrategia de migraciones** (ADR): `user_version` frente a `app_metadata`, preservando los objetos FTS existentes; backup previo; verificación de `integrity-check` de FTS. Solo sobre copias.
-5. **ADR de concurrencia** con la app Python (rollback journal frente a WAL, `busy_timeout`).
-6. Opcional: búsqueda sin acentos (columna normalizada o `remove_diacritics`), que requeriría una migración.
+## Fase 2 — Motor de búsqueda ✅ (2026-11-27)
 
-Riesgos de datos detectados para fases posteriores (no se tocan sin aprobación): 906 títulos `RY …` causados por un bug del importador, la colisión de `codigo_norm` en los ids 124/1016 y rutas solo de Windows.
+**Implementación.** Dos subagentes Sonnet hicieron el backend y el frontend. El coordinador diagnosticó el coste de overflow del BLOB y tomó las decisiones de paridad (ADR-011), las de migraciones (ADR-009) y las de concurrencia (ADR-010).
+- **Backend:**
+  - filtro por tag y `LibraryInfo.tags`;
+  - búsqueda en dos fases;
+  - sugerencia sin `ORDER BY random()`;
+  - `library_info` en caché;
+  - plegado Unicode (`rpg_fold`) en la ruta LIKE;
+  - coincidencia de códigos cortos normalizados;
+  - desempate de `title_desc` como el legacy.
+- **Herramientas:** `gen_synth` (DB sintéticas), `bench` con `--plans` e `--index-experiment`, y `parity` + `tools/legacy_parity.py`.
+- **Frontend:**
+  - selector de etiquetas y botón "Limpiar";
+  - Esc en el buscador borra el texto;
+  - "Ver en la lista" limpia los filtros, busca por código, selecciona, hace scroll y enfoca la fila;
+  - línea de estado con resultados, cargados y estrategia;
+  - icono SVG para la columna de portada;
+  - infraestructura de tests con `globals` y `setup`.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | 10 unitarios + 26 de repo + 2 IPC: **38 ok** |
+| `cargo clippy -D warnings`, `fmt --check` | ok |
+| `npm test` (19), `typecheck`, `tauri build --no-bundle` | ok |
+| Paridad con el legacy (copia real) | 37/38. La diferencia restante es intencional |
+| App real | La sugerencia mostró "1007 de 1160". "Ver en la lista" dejó 1 resultado por FTS en 2,3 ms, con la fila seleccionada y el detalle abierto. El hash de la copia no cambió |
+
+Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
+
+### Pendientes trasladados
+- Índice de título y ajuste del join del orden por código, en la primera migración (Fase 4).
+- Ruta LIKE de 1–2 caracteres (~100 ms con 50k registros).
+- Latencia de extremo a extremo en la UI.
+- Compilar y probar en Linux.
+
+## Fase 3 — Interfaz principal (plan)
+1. Layout con sidebar: biblioteca, estados con conteo, idiomas y etiquetas como filtros rápidos; colapsable.
+2. Vista de galería virtualizada (grid con TanStack Virtual) con portadas diferidas, más un selector lista/galería. Las portadas de la galería usarán miniaturas en caché; en la Fase 3 se usa el BLOB, que ya es ≤ 28 KB.
+3. Temas Claro, Oscuro y Noche (como el legacy) más el del sistema, persistidos en `localStorage`. No se escriben en la DB.
+4. Atajos y command palette mínima (Ctrl+K), foco visible, roles ARIA, estados de vacío y error.
+5. Refresco ante cambios externos: `PRAGMA data_version` al recuperar el foco (ADR-010), invalidando la caché de `library_info`.

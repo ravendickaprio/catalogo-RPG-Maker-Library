@@ -4,6 +4,7 @@ export interface SearchRequest {
   query: string;
   estado?: string | null;
   idioma?: string | null;
+  tag?: string | null;
   sort: SortKey;
   offset: number;
   limit: number;
@@ -54,6 +55,7 @@ export interface LibraryInfo {
   ftsInSync: boolean;
   estados: CountItem[];
   idiomas: CountItem[];
+  tags: CountItem[];
   sqliteVersion: string;
 }
 

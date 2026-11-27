@@ -15,16 +15,21 @@ interface Props {
   query: string;
   estado: string;
   idioma: string;
+  tag: string;
   sort: SortKey;
   onQuery: (v: string) => void;
   onEstado: (v: string) => void;
   onIdioma: (v: string) => void;
+  onTag: (v: string) => void;
+  onClear: () => void;
   onSort: (v: SortKey) => void;
   onSuggest: () => void;
 }
 
 export default function SearchBar(p: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const tags = p.info?.tags ?? [];
+  const hasFilters = !!(p.query || p.estado || p.idioma || p.tag);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -54,6 +59,12 @@ export default function SearchBar(p: Props) {
         value={p.query}
         maxLength={200}
         onChange={(e) => p.onQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && p.query) {
+            e.preventDefault();
+            p.onQuery("");
+          }
+        }}
       />
       <select aria-label="Estado" value={p.estado} onChange={(e) => p.onEstado(e.target.value)}>
         <option value="">Todos los estados</option>
@@ -71,6 +82,16 @@ export default function SearchBar(p: Props) {
           </option>
         ))}
       </select>
+      {tags.length > 0 && (
+        <select aria-label="Etiqueta" value={p.tag} onChange={(e) => p.onTag(e.target.value)}>
+          <option value="">Todas las etiquetas</option>
+          {tags.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.value} ({s.count})
+            </option>
+          ))}
+        </select>
+      )}
       <select aria-label="Ordenar por" value={p.sort} onChange={(e) => p.onSort(e.target.value as SortKey)}>
         {SORT_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
@@ -78,6 +99,9 @@ export default function SearchBar(p: Props) {
           </option>
         ))}
       </select>
+      <button type="button" onClick={p.onClear} disabled={!hasFilters}>
+        Limpiar
+      </button>
       <button type="button" className="btn-suggest" onClick={p.onSuggest}>
         🎲 Juego sugerido del día
       </button>

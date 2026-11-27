@@ -1,0 +1,268 @@
+[
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_desc"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "code"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "status"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "language"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "recent"
+ },
+ {
+  "query": "ry",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "ry-1",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "RY1",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "rj0",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "the",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "girl",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "tentacle",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "japonés",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "é",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "ÉPIC",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "ry-rj0",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "r-y",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "ry -",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "ryuugames rpg",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "the dark",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "  The  ",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "%",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "zzzzqqq",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "a",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "RY 1",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "code"
+ },
+ {
+  "query": "ry-rj0",
+  "estado": null,
+  "idioma": null,
+  "tag": null,
+  "sort": "code"
+ },
+ {
+  "query": "",
+  "estado": "Terminado",
+  "idioma": null,
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "",
+  "estado": "Empezado",
+  "idioma": null,
+  "tag": null,
+  "sort": "code"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": "Inglés",
+  "tag": null,
+  "sort": "title_desc"
+ },
+ {
+  "query": "",
+  "estado": "Sin empezar",
+  "idioma": "Japonés",
+  "tag": null,
+  "sort": "status"
+ },
+ {
+  "query": "the",
+  "estado": "Sin empezar",
+  "idioma": "Inglés",
+  "tag": null,
+  "sort": "title_asc"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": "dificil",
+  "sort": "title_asc"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": "DIFICIL",
+  "sort": "recent"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": "Favorito",
+  "sort": "code"
+ },
+ {
+  "query": "dark",
+  "estado": null,
+  "idioma": null,
+  "tag": "dificil",
+  "sort": "title_asc"
+ },
+ {
+  "query": "ry",
+  "estado": "Sin empezar",
+  "idioma": null,
+  "tag": "mazmorras",
+  "sort": "title_asc"
+ },
+ {
+  "query": "",
+  "estado": null,
+  "idioma": null,
+  "tag": "no-existe",
+  "sort": "title_asc"
+ }
+]

@@ -1,5 +1,4 @@
-import { cleanup } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import SuggestionDialog from "../components/SuggestionDialog";
@@ -23,7 +22,6 @@ function setup(responses: Suggestion[]) {
 }
 
 describe("SuggestionDialog", () => {
-  afterEach(cleanup);
   beforeEach(() => {
     mockInvoke.mockReset();
   });
@@ -61,7 +59,7 @@ describe("SuggestionDialog", () => {
     const { container } = render(<SuggestionDialog onClose={onClose} onShowInList={onShow} />);
     await screen.findByText("Nueve");
     fireEvent.click(screen.getByRole("button", { name: "Ver en la lista" }));
-    expect(onShow).toHaveBeenCalledWith(9);
+    expect(onShow).toHaveBeenCalledWith(expect.objectContaining({ id: 9, codigo: "RJ9" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.mouseDown(container.querySelector(".backdrop")!);

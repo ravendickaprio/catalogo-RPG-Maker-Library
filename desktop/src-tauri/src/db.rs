@@ -57,6 +57,23 @@ pub fn resolve_db_path() -> Result<PathBuf, AppError> {
     Ok(path)
 }
 
+/// `rpg_fold(text)`: Unicode lowercase (NULL -> ''), used by the LIKE fallback for non-ASCII queries.
+pub fn register_functions(conn: &Connection) -> Result<(), AppError> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function(
+        "rpg_fold",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            Ok(ctx
+                .get::<Option<String>>(0)?
+                .map(|s| s.to_lowercase())
+                .unwrap_or_default())
+        },
+    )?;
+    Ok(())
+}
+
 pub fn open_read_only(path: &Path) -> Result<Connection, AppError> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
         | OpenFlags::SQLITE_OPEN_NO_MUTEX
@@ -65,6 +82,7 @@ pub fn open_read_only(path: &Path) -> Result<Connection, AppError> {
         .map_err(|e| AppError::Config(format!("No se pudo abrir la base en solo lectura: {e}")))?;
     conn.busy_timeout(Duration::from_millis(2000))?;
     conn.execute_batch("PRAGMA query_only = ON;")?;
+    register_functions(&conn)?;
     Ok(conn)
 }
 

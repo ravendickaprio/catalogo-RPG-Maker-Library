@@ -7,7 +7,6 @@ use rpg_library_lib::{app_builder, db, error::AppError};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
@@ -24,6 +23,7 @@ fn fixture_db(dir: &TempDir) -> PathBuf {
         ("Beta Land", "RY-2000", "Terminado", "Inglés"),
         ("Gamma Saga", "RY-3000", "Empezado", "Inglés"),
     ];
+
     for (t, c, e, i) in rows {
         conn.execute(
             "INSERT INTO juegos(titulo, codigo, estado, idioma, descripcion, pagina, tipo, imagen)
@@ -32,17 +32,17 @@ fn fixture_db(dir: &TempDir) -> PathBuf {
         )
         .unwrap();
     }
+    conn.execute_batch(
+        "INSERT INTO tags(nombre) VALUES ('rpg'); INSERT INTO juego_tags(juego_id, tag_id) VALUES (1, 1);",
+    )
+    .unwrap();
     path
 }
 
 fn setup(path: &Path) -> (tauri::App<MockRuntime>, WebviewWindow<MockRuntime>) {
     let conn = db::open_read_only(path).unwrap();
     let state = AppState {
-        inner: Ok(Ready {
-            conn: Arc::new(Mutex::new(conn)),
-            fts_available: true,
-            db_file_name: "ipc.db".into(),
-        }),
+        inner: Ok(Ready::new(conn, true, "ipc.db".into())),
     };
     let app = app_builder(mock_builder(), state)
         .build(mock_context(noop_assets()))
@@ -81,6 +81,9 @@ fn ipc_contract_end_to_end_and_read_only() {
     assert_eq!(info["readOnly"], true);
     assert_eq!(info["ftsAvailable"], true);
     assert_eq!(info["dbFileName"], "ipc.db");
+    assert!(info["tags"].is_array());
+    assert_eq!(info["tags"][0]["value"], "rpg");
+    assert_eq!(info["tags"][0]["count"], 1);
 
     let page = invoke(
         &w,
@@ -93,6 +96,23 @@ fn ipc_contract_end_to_end_and_read_only() {
     assert_eq!(page["items"][0]["titulo"], "Beta Land");
     assert!(page["items"][0].get("hasCover").is_some());
     assert!(page["items"][0].get("imagen").is_none());
+
+    // Fase 2: filtro por tag (ausente = sin filtro; presente = NOCASE).
+    let tagged = invoke(
+        &w,
+        "search_games",
+        json!({ "req": { "query": "", "tag": "RPG", "sort": "title_asc", "offset": 0, "limit": 10 } }),
+    )
+    .unwrap();
+    assert_eq!(tagged["total"], 1);
+    assert_eq!(tagged["items"][0]["titulo"], "Alpha Quest");
+    let too_long = invoke(
+        &w,
+        "search_games",
+        json!({ "req": { "query": "", "tag": "x".repeat(101), "sort": "title_asc", "offset": 0, "limit": 10 } }),
+    )
+    .unwrap_err();
+    assert_eq!(too_long["kind"], "InvalidInput");
 
     let bad = invoke(
         &w,

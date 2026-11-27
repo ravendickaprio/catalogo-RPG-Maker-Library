@@ -11,6 +11,7 @@ export interface SearchParams {
   query: string;
   estado: string; // "" = todos
   idioma: string; // "" = todos
+  tag: string; // "" = todas
   sort: SortKey;
 }
 
@@ -24,7 +25,7 @@ export interface SearchState {
   loadMore: () => void;
 }
 
-export function useGameSearch({ query, estado, idioma, sort }: SearchParams): SearchState {
+export function useGameSearch({ query, estado, idioma, tag, sort }: SearchParams): SearchState {
   const debouncedQuery = useDebouncedValue(query.trim(), 150);
   const [items, setItems] = useState<GameSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -37,8 +38,8 @@ export function useGameSearch({ query, estado, idioma, sort }: SearchParams): Se
   const itemsLen = useRef(0);
   const totalRef = useRef(0);
   const loadingMore = useRef(false);
-  const paramsRef = useRef({ debouncedQuery, estado, idioma, sort });
-  paramsRef.current = { debouncedQuery, estado, idioma, sort };
+  const paramsRef = useRef({ debouncedQuery, estado, idioma, tag, sort });
+  paramsRef.current = { debouncedQuery, estado, idioma, tag, sort };
 
   useEffect(() => {
     const token = sequencer.current.next(); // new filter set: invalidates everything older
@@ -49,6 +50,7 @@ export function useGameSearch({ query, estado, idioma, sort }: SearchParams): Se
       query: debouncedQuery,
       estado: estado || null,
       idioma: idioma || null,
+      tag: tag || null,
       sort,
       offset: 0,
       limit: PAGE_SIZE,
@@ -69,7 +71,7 @@ export function useGameSearch({ query, estado, idioma, sort }: SearchParams): Se
         setLoading(false);
       },
     );
-  }, [debouncedQuery, estado, idioma, sort]);
+  }, [debouncedQuery, estado, idioma, tag, sort]);
 
   const loadMore = useCallback(() => {
     if (loadingMore.current || itemsLen.current >= totalRef.current) return;
@@ -80,6 +82,7 @@ export function useGameSearch({ query, estado, idioma, sort }: SearchParams): Se
       query: p.debouncedQuery,
       estado: p.estado || null,
       idioma: p.idioma || null,
+      tag: p.tag || null,
       sort: p.sort,
       offset: itemsLen.current,
       limit: PAGE_SIZE,

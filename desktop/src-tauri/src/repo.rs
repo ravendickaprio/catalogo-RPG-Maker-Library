@@ -4,7 +4,7 @@ use crate::models::*;
 use crate::search;
 use base64::Engine;
 use rusqlite::types::Value;
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use rusqlite::{params_from_iter, Connection, OptionalExtension, Row};
 use std::time::Instant;
 
 const SUMMARY_COLS: &str =
@@ -47,26 +47,53 @@ fn counts(conn: &Connection, sql: &str) -> Result<Vec<CountItem>, AppError> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+/// One scan of `juegos` (columns before `imagen` only) gives total, estados and idiomas.
 pub fn library_info(conn: &Connection, db_file_name: &str) -> Result<LibraryInfo, AppError> {
-    let (fts_available, fts_in_sync) = detect_fts(conn)?;
-    let total: i64 = conn.query_row("SELECT count(*) FROM juegos", [], |r| r.get(0))?;
-    let estados = counts(
+    let available = table_exists(conn, "juegos_fts")? && table_exists(conn, "juegos_busqueda")?;
+    let mut estados_m: std::collections::HashMap<String, i64> = Default::default();
+    let mut idiomas_m: std::collections::HashMap<String, i64> = Default::default();
+    let mut total = 0i64;
+    {
+        let mut st = conn.prepare(
+            "SELECT coalesce(estado,''), coalesce(idioma,''), count(*) FROM juegos GROUP BY 1, 2",
+        )?;
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let (e, i, c): (String, String, i64) = (r.get(0)?, r.get(1)?, r.get(2)?);
+            total += c;
+            *estados_m.entry(e).or_insert(0) += c;
+            *idiomas_m.entry(i).or_insert(0) += c;
+        }
+    }
+    let fts_in_sync = if available {
+        let b: i64 = conn.query_row("SELECT count(*) FROM juegos_busqueda", [], |r| r.get(0))?;
+        b == total
+    } else {
+        false
+    };
+    let sorted = |m: std::collections::HashMap<String, i64>| {
+        let mut v: Vec<CountItem> = m
+            .into_iter()
+            .map(|(value, count)| CountItem { value, count })
+            .collect();
+        v.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.cmp(&b.value)));
+        v
+    };
+    let tags = counts(
         conn,
-        "SELECT coalesce(estado,''), count(*) AS c FROM juegos GROUP BY 1 ORDER BY c DESC, 1",
-    )?;
-    let idiomas = counts(
-        conn,
-        "SELECT coalesce(idioma,''), count(*) AS c FROM juegos GROUP BY 1 ORDER BY c DESC, 1",
+        "SELECT t.nombre, count(*) FROM tags t JOIN juego_tags jt ON jt.tag_id = t.id \
+         JOIN juegos j ON j.id = jt.juego_id GROUP BY t.id ORDER BY t.nombre COLLATE NOCASE",
     )?;
     let sqlite_version: String = conn.query_row("SELECT sqlite_version()", [], |r| r.get(0))?;
     Ok(LibraryInfo {
         db_file_name: db_file_name.to_string(),
         read_only: true,
         total,
-        fts_available,
+        fts_available: available,
         fts_in_sync,
-        estados,
-        idiomas,
+        estados: sorted(estados_m),
+        idiomas: sorted(idiomas_m),
+        tags,
         sqlite_version,
     })
 }
@@ -85,10 +112,14 @@ fn summary_from_row(r: &Row) -> rusqlite::Result<GameSummary> {
     })
 }
 
-fn order_by(sort: SortKey) -> &'static str {
+/// `use_b`: the sort may read codes from the `bq` alias (juegos_busqueda, no BLOBs).
+fn order_by(sort: SortKey, use_b: bool) -> &'static str {
     match sort {
         SortKey::TitleAsc => "j.titulo COLLATE NOCASE, j.id",
-        SortKey::TitleDesc => "j.titulo COLLATE NOCASE DESC, j.id DESC",
+        SortKey::TitleDesc => "j.titulo COLLATE NOCASE DESC, j.id",
+        SortKey::Code if use_b => {
+            "(trim(bq.codigo) = ''), bq.codigo COLLATE NOCASE, j.titulo COLLATE NOCASE, j.id"
+        }
         SortKey::Code => {
             "(trim(coalesce(j.codigo,'')) = ''), j.codigo COLLATE NOCASE, j.titulo COLLATE NOCASE, j.id"
         }
@@ -100,16 +131,48 @@ fn order_by(sort: SortKey) -> &'static str {
     }
 }
 
-pub fn search(
+/// SQL (fixed fragments) and bound parameters of a search. `page_sql` additionally
+/// needs `limit` and `offset` appended as the last two parameters. If `two_phase`,
+/// `page_sql` returns only ids (phase 1) and the summaries are fetched afterwards
+/// with `summaries_sql`; otherwise `page_sql` returns full summary rows.
+pub struct SearchSql {
+    pub count_sql: String,
+    pub page_sql: String,
+    pub params: Vec<Value>,
+    pub strategy: &'static str,
+    pub two_phase: bool,
+}
+
+/// Columns of `juegos` located after `imagen` (codigo, ruta, pagina, tipo, puntuacion) force
+/// SQLite to walk the BLOB overflow chain, so phase 1 never reads them from `juegos`.
+const LIKE_COLS: [&str; 7] = [
+    "titulo",
+    "codigo",
+    "codigo_norm",
+    "descripcion",
+    "pagina",
+    "tipo",
+    "tags",
+];
+
+/// Validates the request and builds the SQL. Also used by the bench for EXPLAIN QUERY PLAN.
+pub fn build_search_sql(
     conn: &Connection,
     req: &SearchRequest,
     fts_available: bool,
-) -> Result<SearchPage, AppError> {
+) -> Result<SearchSql, AppError> {
     let query = req.query.trim();
     if query.chars().count() > 200 {
         return Err(AppError::InvalidInput(
             "La consulta supera los 200 caracteres.".into(),
         ));
+    }
+    if let Some(t) = &req.tag {
+        if t.chars().count() > 100 {
+            return Err(AppError::InvalidInput(
+                "El tag supera los 100 caracteres.".into(),
+            ));
+        }
     }
     if !(1..=200).contains(&req.limit) {
         return Err(AppError::InvalidInput(
@@ -120,8 +183,8 @@ pub fn search(
         return Err(AppError::InvalidInput("offset debe ser >= 0.".into()));
     }
 
-    let start = Instant::now();
-    let mut conds: Vec<&'static str> = Vec::new();
+    let has_busqueda = table_exists(conn, "juegos_busqueda")?;
+    let mut conds: Vec<String> = Vec::new();
     let mut params_v: Vec<Value> = Vec::new();
     let strategy: &'static str;
 
@@ -129,44 +192,85 @@ pub fn search(
         strategy = "none";
     } else if let (Some(m), true) = (search::build_match(query), fts_available) {
         strategy = "fts";
-        conds.push("j.id IN (SELECT rowid FROM juegos_fts WHERE juegos_fts MATCH ?)");
-        params_v.push(Value::Text(m));
+        let norm = search::normalize_code(query);
+        let norm_len = norm.chars().count();
+        if (1..3).contains(&norm_len) {
+            // Raw query >= 3 chars but its normalized code is 1-2 chars (e.g. "r-y"): the FTS
+            // phrase only finds the literal text, so also match codes by LIKE (legacy parity).
+            conds.push(
+                "(j.id IN (SELECT rowid FROM juegos_fts WHERE juegos_fts MATCH ?) \
+                 OR j.id IN (SELECT juego_id FROM juegos_busqueda WHERE codigo_norm LIKE ? ESCAPE '\\'))"
+                    .to_string(),
+            );
+            params_v.push(Value::Text(m));
+            params_v.push(Value::Text(search::like_pattern(&norm)));
+        } else {
+            conds.push("j.id IN (SELECT rowid FROM juegos_fts WHERE juegos_fts MATCH ?)".into());
+            params_v.push(Value::Text(m));
+        }
     } else {
         strategy = "like";
-        let pat = search::like_pattern(query);
-        if table_exists(conn, "juegos_busqueda")? {
-            conds.push(
-                "j.id IN (SELECT b.juego_id FROM juegos_busqueda b WHERE \
-                 b.titulo LIKE ? ESCAPE '\\' OR b.codigo LIKE ? ESCAPE '\\' OR b.codigo_norm LIKE ? ESCAPE '\\' \
-                 OR b.descripcion LIKE ? ESCAPE '\\' OR b.pagina LIKE ? ESCAPE '\\' OR b.tipo LIKE ? ESCAPE '\\' \
-                 OR b.tags LIKE ? ESCAPE '\\')",
-            );
-            let norm = search::normalize_code(query);
+        // Non-ASCII queries: SQLite LIKE only folds ASCII, so compare rpg_fold(col) (Unicode
+        // lowercase) against the lowercased pattern. ASCII queries keep the plain, faster LIKE.
+        let fold = !query.is_ascii();
+        let q = if fold {
+            query.to_lowercase()
+        } else {
+            query.to_string()
+        };
+        let pat = search::like_pattern(&q);
+        let col = |c: &str, prefix: &str| {
+            if fold {
+                format!("rpg_fold({prefix}{c})")
+            } else {
+                format!("{prefix}{c}")
+            }
+        };
+        if has_busqueda {
+            let norm = search::normalize_code(&q);
             let norm_pat = if norm.is_empty() {
                 pat.clone()
             } else {
                 search::like_pattern(&norm)
             };
-            for p in [&pat, &pat, &norm_pat, &pat, &pat, &pat, &pat] {
+            let parts: Vec<String> = LIKE_COLS
+                .iter()
+                .map(|c| format!("{} LIKE ? ESCAPE '\\'", col(c, "b.")))
+                .collect();
+            conds.push(format!(
+                "j.id IN (SELECT b.juego_id FROM juegos_busqueda b WHERE {})",
+                parts.join(" OR ")
+            ));
+            for c in LIKE_COLS {
+                let p = if c == "codigo_norm" { &norm_pat } else { &pat };
                 params_v.push(Value::Text(p.clone()));
             }
         } else {
-            conds.push(
-                "(j.titulo LIKE ? ESCAPE '\\' OR j.codigo LIKE ? ESCAPE '\\' OR j.descripcion LIKE ? ESCAPE '\\' \
-                 OR j.pagina LIKE ? ESCAPE '\\' OR j.tipo LIKE ? ESCAPE '\\')",
-            );
+            let parts: Vec<String> = ["titulo", "codigo", "descripcion", "pagina", "tipo"]
+                .iter()
+                .map(|c| format!("{} LIKE ? ESCAPE '\\'", col(c, "j.")))
+                .collect();
+            conds.push(format!("({})", parts.join(" OR ")));
             for _ in 0..5 {
                 params_v.push(Value::Text(pat.clone()));
             }
         }
     }
     if let Some(e) = &req.estado {
-        conds.push("j.estado = ?");
+        conds.push("j.estado = ?".into());
         params_v.push(Value::Text(e.clone()));
     }
     if let Some(i) = &req.idioma {
-        conds.push("j.idioma = ?");
+        conds.push("j.idioma = ?".into());
         params_v.push(Value::Text(i.clone()));
+    }
+    if let Some(t) = &req.tag {
+        conds.push(
+            "j.id IN (SELECT jt.juego_id FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id \
+             WHERE t.nombre = ? COLLATE NOCASE)"
+                .into(),
+        );
+        params_v.push(Value::Text(t.clone()));
     }
     let where_sql = if conds.is_empty() {
         String::new()
@@ -175,18 +279,65 @@ pub fn search(
     };
 
     let count_sql = format!("SELECT count(*) FROM juegos j{where_sql}");
-    let total: i64 = conn.query_row(&count_sql, params_from_iter(params_v.iter()), |r| r.get(0))?;
-
+    // Phase 1 (ids only) is possible when juegos_busqueda exists; otherwise single phase.
+    let two_phase = has_busqueda;
+    let join = if two_phase && req.sort == SortKey::Code {
+        " LEFT JOIN juegos_busqueda bq ON bq.juego_id = j.id"
+    } else {
+        ""
+    };
+    let cols = if two_phase { "j.id" } else { SUMMARY_COLS };
     let page_sql = format!(
-        "SELECT {SUMMARY_COLS} FROM juegos j{where_sql} ORDER BY {} LIMIT ? OFFSET ?",
-        order_by(req.sort)
+        "SELECT {cols} FROM juegos j{join}{where_sql} ORDER BY {} LIMIT ? OFFSET ?",
+        order_by(req.sort, two_phase)
     );
+    Ok(SearchSql {
+        count_sql,
+        page_sql,
+        params: params_v,
+        strategy,
+        two_phase,
+    })
+}
+
+/// Phase 2: summaries for the given ids (<= 200), returned in the order of `ids`.
+fn fetch_summaries(conn: &Connection, ids: &[i64]) -> Result<Vec<GameSummary>, AppError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ph = vec!["?"; ids.len()].join(",");
+    let sql = format!("SELECT {SUMMARY_COLS} FROM juegos j WHERE j.id IN ({ph})");
+    let mut st = conn.prepare(&sql)?;
+    let mut by_id: std::collections::HashMap<i64, GameSummary> = st
+        .query_map(params_from_iter(ids.iter()), summary_from_row)?
+        .map(|r| r.map(|g| (g.id, g)))
+        .collect::<Result<_, _>>()?;
+    Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
+}
+
+pub fn search(
+    conn: &Connection,
+    req: &SearchRequest,
+    fts_available: bool,
+) -> Result<SearchPage, AppError> {
+    let start = Instant::now();
+    let q = build_search_sql(conn, req, fts_available)?;
+    let total: i64 = conn.query_row(&q.count_sql, params_from_iter(q.params.iter()), |r| {
+        r.get(0)
+    })?;
+    let mut params_v = q.params;
     params_v.push(Value::Integer(req.limit));
     params_v.push(Value::Integer(req.offset));
-    let mut st = conn.prepare(&page_sql)?;
-    let items = st
-        .query_map(params_from_iter(params_v.iter()), summary_from_row)?
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut st = conn.prepare(&q.page_sql)?;
+    let items = if q.two_phase {
+        let ids = st
+            .query_map(params_from_iter(params_v.iter()), |r| r.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        fetch_summaries(conn, &ids)?
+    } else {
+        st.query_map(params_from_iter(params_v.iter()), summary_from_row)?
+            .collect::<Result<Vec<_>, _>>()?
+    };
 
     Ok(SearchPage {
         items,
@@ -194,7 +345,7 @@ pub fn search(
         offset: req.offset,
         limit: req.limit,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
-        strategy,
+        strategy: q.strategy,
     })
 }
 
@@ -265,34 +416,44 @@ pub fn get_cover(conn: &Connection, id: i64) -> Result<Option<Cover>, AppError> 
     }
 }
 
+static PICK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Small non-cryptographic random index in `0..n` (splitmix64 over clock nanos + counter).
+fn random_below(n: usize) -> usize {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let c = PICK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut z = nanos ^ c.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    (z % n as u64) as usize
+}
+
 pub fn suggest(conn: &Connection, req: &SuggestRequest) -> Result<Suggestion, AppError> {
     let total_count: i64 = conn.query_row("SELECT count(*) FROM juegos", [], |r| r.get(0))?;
-    let eligible_count: i64 = conn.query_row(
-        &format!("SELECT count(*) FROM juegos WHERE {ELIGIBLE}"),
-        [],
-        |r| r.get(0),
-    )?;
-    if eligible_count == 0 {
+    // Only ids of eligible games (estado is stored before the BLOB): no sort, no overflow reads.
+    let mut ids: Vec<i64> = conn
+        .prepare(&format!("SELECT id FROM juegos WHERE {ELIGIBLE}"))?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    let eligible_count = ids.len() as i64;
+    if ids.is_empty() {
         return Ok(Suggestion {
             game: None,
             eligible_count,
             total_count,
         });
     }
-    let id: i64 = match req.exclude_id {
-        Some(ex) if eligible_count > 1 => conn.query_row(
-            &format!(
-                "SELECT id FROM juegos WHERE {ELIGIBLE} AND id <> ? ORDER BY random() LIMIT 1"
-            ),
-            params![ex],
-            |r| r.get(0),
-        )?,
-        _ => conn.query_row(
-            &format!("SELECT id FROM juegos WHERE {ELIGIBLE} ORDER BY random() LIMIT 1"),
-            [],
-            |r| r.get(0),
-        )?,
-    };
+    if let Some(ex) = req.exclude_id {
+        if ids.len() > 1 {
+            ids.retain(|&i| i != ex);
+        }
+    }
+    let id = ids[random_below(ids.len())];
     Ok(Suggestion {
         game: Some(get_game(conn, id)?),
         eligible_count,

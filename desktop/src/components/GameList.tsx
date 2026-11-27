@@ -5,6 +5,15 @@ import { estadoClass } from "../lib/estado";
 
 const ROW_H = 44;
 
+const STRATEGY_HELP =
+  "Estrategia de búsqueda. FTS: índice de texto completo (rápido). LIKE: búsqueda por coincidencia parcial. —: sin texto de búsqueda.";
+
+export function strategyLabel(s: string | null): string {
+  if (s === "fts") return "FTS";
+  if (s === "like") return "LIKE";
+  return "—";
+}
+
 interface Props {
   items: GameSummary[];
   total: number;
@@ -15,6 +24,8 @@ interface Props {
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
   loadMore: () => void;
+  /** Incremented to request focusing the list once the selected row is loaded. */
+  focusTick?: number;
 }
 
 export default function GameList({
@@ -27,6 +38,7 @@ export default function GameList({
   onSelect,
   onOpen,
   loadMore,
+  focusTick = 0,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -44,10 +56,20 @@ export default function GameList({
 
   const selectedIndex = selectedId == null ? -1 : items.findIndex((g) => g.id === selectedId);
 
+  // Scroll when the selection changes or when its row becomes available (e.g. after a locate).
   useEffect(() => {
     if (selectedIndex >= 0) virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, selectedIndex]);
+
+  // Focus the list once a requested locate has results containing the selected row.
+  const handledFocus = useRef(0);
+  useEffect(() => {
+    if (focusTick === handledFocus.current || loading || selectedIndex < 0) return;
+    handledFocus.current = focusTick;
+    const t = setTimeout(() => parentRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [focusTick, loading, selectedIndex]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!items.length) return;
@@ -73,7 +95,13 @@ export default function GameList({
         <span>Estado</span>
         <span>Idioma</span>
         <span>Tipo</span>
-        <span title="Portada">🖼</span>
+        <span title="Portada" aria-label="Portada">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" role="img" aria-label="Portada">
+            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+            <circle cx="5.5" cy="6.5" r="1.1" />
+            <path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3" />
+          </svg>
+        </span>
       </div>
       <div
         ref={parentRef}
@@ -112,7 +140,7 @@ export default function GameList({
                 </span>
                 <span className="cell-muted">{g.idioma}</span>
                 <span className="cell-muted">{g.tipo}</span>
-                <span aria-label={g.hasCover ? "Con portada" : "Sin portada"} title={g.hasCover ? "Con portada" : "Sin portada"}>
+                <span role="img" aria-label={g.hasCover ? "Con portada" : "Sin portada"} title={g.hasCover ? "Con portada" : "Sin portada"}>
                   {g.hasCover ? "●" : "○"}
                 </span>
               </div>
@@ -121,11 +149,18 @@ export default function GameList({
         </div>
       </div>
       <div className="statusline" role="status" aria-live="polite">
-        {loading ? "Cargando…" : `Mostrando ${items.length} de ${total}`}
+        {loading ? (
+          "Cargando…"
+        ) : (
+          <>
+            <span>{total} {total === 1 ? "resultado" : "resultados"}</span>
+            {items.length < total && <span className="cell-muted"> · {items.length} cargados</span>}
+          </>
+        )}
         {elapsedMs != null && !loading && (
-          <span className="cell-muted">
+          <span className="cell-muted" title={STRATEGY_HELP}>
             {" "}
-            · {elapsedMs.toFixed(1)} ms · estrategia: {strategy}
+            · {elapsedMs.toFixed(1)} ms · {strategyLabel(strategy)}
           </span>
         )}
       </div>

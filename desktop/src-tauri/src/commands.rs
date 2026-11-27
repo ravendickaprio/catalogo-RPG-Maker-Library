@@ -10,6 +10,27 @@ pub struct Ready {
     pub conn: Arc<Mutex<Connection>>,
     pub fts_available: bool,
     pub db_file_name: String,
+    /// Cached `LibraryInfo`: the connection is read-only for the whole session, so the data
+    /// cannot change under us. The Phase 3 `PRAGMA data_version` refresh must call
+    /// `invalidate_info()` when it detects an external write.
+    pub info_cache: Arc<Mutex<Option<LibraryInfo>>>,
+}
+
+impl Ready {
+    pub fn new(conn: Connection, fts_available: bool, db_file_name: String) -> Self {
+        Ready {
+            conn: Arc::new(Mutex::new(conn)),
+            fts_available,
+            db_file_name,
+            info_cache: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn invalidate_info(&self) {
+        if let Ok(mut c) = self.info_cache.lock() {
+            *c = None;
+        }
+    }
 }
 
 /// App state. If startup failed, every command returns the stored Config error.
@@ -42,7 +63,19 @@ where
 
 #[tauri::command]
 pub async fn get_library_info(state: State<'_, AppState>) -> Result<LibraryInfo, AppError> {
-    run_blocking(&state, |c, r| repo::library_info(c, &r.db_file_name)).await
+    run_blocking(&state, |c, r| {
+        let mut cache = r
+            .info_cache
+            .lock()
+            .map_err(|_| AppError::Database("Caché no disponible (lock envenenado).".into()))?;
+        if let Some(info) = cache.as_ref() {
+            return Ok(info.clone());
+        }
+        let info = repo::library_info(c, &r.db_file_name)?;
+        *cache = Some(info.clone());
+        Ok(info)
+    })
+    .await
 }
 
 #[tauri::command]

@@ -14,6 +14,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "bench"
 path = "src/bin/bench.rs"
 
+[[bin]]
+name = "gen_synth"
+path = "src/bin/gen_synth.rs"
+
+[[bin]]
+name = "parity"
+path = "src/bin/parity.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -21,7 +29,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "functions"] }
 base64 = "0.22"
 thiserror = "2"
 

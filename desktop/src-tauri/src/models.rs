@@ -19,6 +19,8 @@ pub struct SearchRequest {
     pub estado: Option<String>,
     #[serde(default)]
     pub idioma: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
     pub sort: SortKey,
     pub offset: i64,
     pub limit: i64,
@@ -83,6 +85,7 @@ pub struct LibraryInfo {
     pub fts_in_sync: bool,
     pub estados: Vec<CountItem>,
     pub idiomas: Vec<CountItem>,
+    pub tags: Vec<CountItem>,
     pub sqlite_version: String,
 }
 
@@ -110,7 +113,7 @@ mod tests {
             serde_json::from_str(r#"{"query":"a","sort":"title_desc","offset":0,"limit":10}"#)
                 .unwrap();
         assert_eq!(r.sort, SortKey::TitleDesc);
-        assert!(r.estado.is_none() && r.idioma.is_none());
+        assert!(r.estado.is_none() && r.idioma.is_none() && r.tag.is_none());
     }
 
     #[test]

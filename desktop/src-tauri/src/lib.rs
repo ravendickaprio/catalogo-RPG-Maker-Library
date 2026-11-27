@@ -7,7 +7,6 @@ pub mod search;
 
 use commands::{AppState, Ready};
 use error::AppError;
-use std::sync::{Arc, Mutex};
 
 fn init_state() -> Result<Ready, AppError> {
     let path = db::resolve_db_path()?;
@@ -17,11 +16,7 @@ fn init_state() -> Result<Ready, AppError> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    Ok(Ready {
-        conn: Arc::new(Mutex::new(conn)),
-        fts_available,
-        db_file_name,
-    })
+    Ok(Ready::new(conn, fts_available, db_file_name))
 }
 
 /// Construye el builder con el estado y la lista cerrada de comandos permitidos.
