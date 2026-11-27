@@ -39,7 +39,7 @@ class App:
   descbox=ttk.Frame(right);descbox.grid(row=2,column=0,sticky="nsew",pady=(0,8));descbox.rowconfigure(0,weight=1);descbox.columnconfigure(0,weight=1)
   self.desc=tk.Text(descbox,wrap="word",undo=True);self.desc.grid(row=0,column=0,sticky="nsew");ds=ttk.Scrollbar(descbox,command=self.desc.yview);ds.grid(row=0,column=1,sticky="ns");self.desc.configure(yscrollcommand=ds.set);self.desc.bind("<<Modified>>",self.mark_dirty)
   self.state=tk.StringVar(value=ESTADOS[0]);self.lang=tk.StringVar(value=IDIOMAS[0]);self.page=tk.StringVar();self.typ=tk.StringVar(value=TIPOS[-1]);self.rating=tk.StringVar(value="0.0");self.tags=tk.StringVar();self.path=tk.StringVar()
-  fields=ttk.Frame(right);fields.grid(row=3,column=0,sticky="ew",pady=5);fields.columnconfigure((0,1),weight=1)
+  fields=ttk.Frame(right);fields.grid(row=3,column=0,sticky="ew",pady=5);fields.columnconfigure(0,weight=1);fields.columnconfigure(1,weight=1)
   self.combo(fields,"Estado",self.state,ESTADOS,0,0);self.combo(fields,"Idioma",self.lang,IDIOMAS,0,1);self.combo(fields,"Página",self.page,PAGINAS,1,0);self.combo(fields,"Tipo",self.typ,TIPOS,1,1);self.combo(fields,"Puntuación ★",self.rating,PUNTOS,2,0)
   ttk.Label(fields,text="Tags (separados por coma)").grid(row=2,column=1,sticky="w");ttk.Entry(fields,textvariable=self.tags).grid(row=3,column=1,sticky="ew")
   pathf=ttk.Frame(right);pathf.grid(row=4,column=0,sticky="ew",pady=5);pathf.columnconfigure(0,weight=1);ttk.Label(pathf,text="Ruta").grid(row=0,column=0,sticky="w")
