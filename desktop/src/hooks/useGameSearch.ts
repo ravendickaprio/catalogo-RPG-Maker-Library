@@ -23,6 +23,8 @@ export interface SearchState {
   elapsedMs: number | null;
   strategy: SearchPage["strategy"] | null;
   loadMore: () => void;
+  /** Re-runs the current search from offset 0 (e.g. after an external DB change). */
+  reload: () => void;
 }
 
 export function useGameSearch({ query, estado, idioma, tag, sort }: SearchParams): SearchState {
@@ -33,6 +35,9 @@ export function useGameSearch({ query, estado, idioma, tag, sort }: SearchParams
   const [error, setError] = useState<AppError | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [strategy, setStrategy] = useState<SearchPage["strategy"] | null>(null);
+
+  const [reloadTick, setReloadTick] = useState(0);
+  const reload = useCallback(() => setReloadTick((n) => n + 1), []);
 
   const sequencer = useRef(new RequestSequencer());
   const itemsLen = useRef(0);
@@ -71,7 +76,7 @@ export function useGameSearch({ query, estado, idioma, tag, sort }: SearchParams
         setLoading(false);
       },
     );
-  }, [debouncedQuery, estado, idioma, tag, sort]);
+  }, [debouncedQuery, estado, idioma, tag, sort, reloadTick]);
 
   const loadMore = useCallback(() => {
     if (loadingMore.current || itemsLen.current >= totalRef.current) return;
@@ -105,5 +110,5 @@ export function useGameSearch({ query, estado, idioma, tag, sort }: SearchParams
     );
   }, []);
 
-  return { items, total, loading, error, elapsedMs, strategy, loadMore };
+  return { items, total, loading, error, elapsedMs, strategy, loadMore, reload };
 }

@@ -32,7 +32,8 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::search_games,
             commands::get_game,
             commands::get_cover,
-            commands::suggest_game
+            commands::suggest_game,
+            commands::check_data_version
         ])
 }
 

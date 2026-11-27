@@ -2,17 +2,11 @@ import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { GameSummary } from "../api/types";
 import { estadoClass } from "../lib/estado";
+import StatusLine from "./StatusLine";
 
 const ROW_H = 44;
 
-const STRATEGY_HELP =
-  "Estrategia de búsqueda. FTS: índice de texto completo (rápido). LIKE: búsqueda por coincidencia parcial. —: sin texto de búsqueda.";
-
-export function strategyLabel(s: string | null): string {
-  if (s === "fts") return "FTS";
-  if (s === "like") return "LIKE";
-  return "—";
-}
+export { strategyLabel } from "./StatusLine";
 
 interface Props {
   items: GameSummary[];
@@ -108,11 +102,21 @@ export default function GameList({
         className="list-scroll"
         role="listbox"
         aria-label="Juegos"
+        aria-busy={loading}
         aria-activedescendant={selectedIndex >= 0 ? `game-${selectedId}` : undefined}
         tabIndex={0}
         onKeyDown={onKeyDown}
       >
-        {!loading && items.length === 0 && <p className="empty">No hay resultados.</p>}
+        {!loading && items.length === 0 && (
+          <p className="empty">No hay resultados. Prueba con otros términos o pulsa «Limpiar» para quitar los filtros.</p>
+        )}
+        {loading && items.length === 0 && (
+          <div className="skeleton-list" aria-hidden="true">
+            {Array.from({ length: 12 }, (_, i) => (
+              <div key={i} className="skeleton-row" />
+            ))}
+          </div>
+        )}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
           {vItems.map((v) => {
             const g = items[v.index];
@@ -148,22 +152,7 @@ export default function GameList({
           })}
         </div>
       </div>
-      <div className="statusline" role="status" aria-live="polite">
-        {loading ? (
-          "Cargando…"
-        ) : (
-          <>
-            <span>{total} {total === 1 ? "resultado" : "resultados"}</span>
-            {items.length < total && <span className="cell-muted"> · {items.length} cargados</span>}
-          </>
-        )}
-        {elapsedMs != null && !loading && (
-          <span className="cell-muted" title={STRATEGY_HELP}>
-            {" "}
-            · {elapsedMs.toFixed(1)} ms · {strategyLabel(strategy)}
-          </span>
-        )}
-      </div>
+      <StatusLine loading={loading} total={total} count={items.length} elapsedMs={elapsedMs} strategy={strategy} />
     </section>
   );
 }

@@ -75,3 +75,8 @@ export interface AppError {
   kind: AppErrorKind;
   message: string;
 }
+
+export interface DataVersion {
+  version: number;
+  changed: boolean;
+}

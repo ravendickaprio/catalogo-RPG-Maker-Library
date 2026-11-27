@@ -1,4 +1,4 @@
-# Contratos frontend ↔ backend (Fase 1 + cambios Fase 2)
+# Contratos frontend ↔ backend (Fase 1 + cambios Fases 2 y 3)
 
 Comandos Tauri invocados con `invoke(nombre, args)`. Los DTO se serializan en **camelCase** (`#[serde(rename_all = "camelCase")]`). Los errores siguen siempre la forma `AppError { kind, message }`. Todos los comandos son `async` y ejecutan SQLite con `spawn_blocking`. La conexión es de solo lectura (ADR-003).
 
@@ -57,6 +57,8 @@ interface Suggestion {
   totalCount: number;
 }
 
+interface DataVersion { version: number; changed: boolean } // [Fase 3]
+
 interface AppError { kind: "NotFound" | "InvalidInput" | "Database" | "Config"; message: string }
 ```
 
@@ -69,6 +71,7 @@ interface AppError { kind: "NotFound" | "InvalidInput" | "Database" | "Config"; 
 | `get_game` | `{ id: number }` | `GameDetail` (`NotFound` si no existe) |
 | `get_cover` | `{ id: number }` | `Cover \| null` |
 | `suggest_game` | `{ req: SuggestRequest }` | `Suggestion` |
+| `check_data_version` | — | `DataVersion` [Fase 3] |
 
 ## Reglas de backend
 - Nunca seleccionar `imagen` excepto en `get_cover`. `hasCover = coalesce(length(imagen),0) > 0`.
@@ -77,6 +80,9 @@ interface AppError { kind: "NotFound" | "InvalidInput" | "Database" | "Config"; 
 - Filtro tag [Fase 2]: `j.id IN (SELECT jt.juego_id FROM juego_tags jt JOIN tags t ON t.id = jt.tag_id WHERE t.nombre = ? COLLATE NOCASE)`.
 - Validación: tag ≤ 100 caracteres; query ≤ 200 caracteres, limit 1..=200, offset ≥ 0, id > 0. Si falla → `InvalidInput`.
 - Elegibilidad de la sugerencia: `lower(trim(coalesce(estado,''))) <> 'terminado'`. Con `excludeId` y más de un candidato, se excluye ese id.
+
+## `check_data_version` [Fase 3, ADR-010]
+Lee `PRAGMA data_version` en la conexión de la app (solo lectura, sin escribir) y lo compara con el último valor visto (guardado en `Ready`, inicializado al abrir la base). `changed = true` cuando otra conexión (p. ej. la app Python) hizo commit desde la última comprobación; en ese caso se invalida la caché de `LibraryInfo`, de modo que el siguiente `get_library_info` devuelve datos nuevos. Cada llamada actualiza el valor visto: dos llamadas seguidas sin escrituras externas devuelven `changed = false`. El frontend la invoca al recuperar el foco y cada 30 s mientras la ventana es visible.
 
 ## Reglas de frontend
 - Debounce de 150 ms en la búsqueda. Cada petición lleva un número de secuencia y se descartan respuestas obsoletas.

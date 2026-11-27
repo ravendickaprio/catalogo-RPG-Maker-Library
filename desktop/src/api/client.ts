@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppError,
   Cover,
+  DataVersion,
   GameDetail,
   LibraryInfo,
   SearchPage,
@@ -37,3 +38,4 @@ export const searchGames = (req: SearchRequest) => call<SearchPage>("search_game
 export const getGame = (id: number) => call<GameDetail>("get_game", { id });
 export const getCover = (id: number) => call<Cover | null>("get_cover", { id });
 export const suggestGame = (req: SuggestRequest) => call<Suggestion>("suggest_game", { req });
+export const checkDataVersion = () => call<DataVersion>("check_data_version");

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import type { LibraryInfo, SortKey } from "../api/types";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import type { SortKey } from "../api/types";
 
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "title_asc", label: "Nombre A-Z" },
@@ -11,41 +11,37 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 interface Props {
-  info: LibraryInfo | null;
   query: string;
+  /** Active sidebar filters (only used to enable "Limpiar"). */
   estado: string;
   idioma: string;
   tag: string;
   sort: SortKey;
   onQuery: (v: string) => void;
-  onEstado: (v: string) => void;
-  onIdioma: (v: string) => void;
-  onTag: (v: string) => void;
   onClear: () => void;
   onSort: (v: SortKey) => void;
   onSuggest: () => void;
 }
 
-export default function SearchBar(p: Props) {
+const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(p, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const tags = p.info?.tags ?? [];
+  useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
   const hasFilters = !!(p.query || p.estado || p.idioma || p.tag);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      } else if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        inputRef.current?.focus();
+        const el = inputRef.current;
+        el?.focus();
+        el?.select();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -55,7 +51,7 @@ export default function SearchBar(p: Props) {
         type="search"
         className="search-input"
         aria-label="Buscar"
-        placeholder="Buscar por título, código, etiqueta…  (Ctrl+K o /)"
+        placeholder="Buscar por título, código, etiqueta…  (/)"
         value={p.query}
         maxLength={200}
         onChange={(e) => p.onQuery(e.target.value)}
@@ -66,32 +62,6 @@ export default function SearchBar(p: Props) {
           }
         }}
       />
-      <select aria-label="Estado" value={p.estado} onChange={(e) => p.onEstado(e.target.value)}>
-        <option value="">Todos los estados</option>
-        {p.info?.estados.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.value || "(sin estado)"} ({s.count})
-          </option>
-        ))}
-      </select>
-      <select aria-label="Idioma" value={p.idioma} onChange={(e) => p.onIdioma(e.target.value)}>
-        <option value="">Todos los idiomas</option>
-        {p.info?.idiomas.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.value || "(sin idioma)"} ({s.count})
-          </option>
-        ))}
-      </select>
-      {tags.length > 0 && (
-        <select aria-label="Etiqueta" value={p.tag} onChange={(e) => p.onTag(e.target.value)}>
-          <option value="">Todas las etiquetas</option>
-          {tags.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.value} ({s.count})
-            </option>
-          ))}
-        </select>
-      )}
       <select aria-label="Ordenar por" value={p.sort} onChange={(e) => p.onSort(e.target.value as SortKey)}>
         {SORT_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
@@ -107,4 +77,6 @@ export default function SearchBar(p: Props) {
       </button>
     </div>
   );
-}
+});
+
+export default SearchBar;

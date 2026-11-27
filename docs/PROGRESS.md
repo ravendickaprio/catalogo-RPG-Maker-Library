@@ -77,9 +77,30 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - Latencia de extremo a extremo en la UI.
 - Compilar y probar en Linux.
 
-## Fase 3 — Interfaz principal (plan)
-1. Layout con sidebar: biblioteca, estados con conteo, idiomas y etiquetas como filtros rápidos; colapsable.
-2. Vista de galería virtualizada (grid con TanStack Virtual) con portadas diferidas, más un selector lista/galería. Las portadas de la galería usarán miniaturas en caché; en la Fase 3 se usa el BLOB, que ya es ≤ 28 KB.
-3. Temas Claro, Oscuro y Noche (como el legacy) más el del sistema, persistidos en `localStorage`. No se escriben en la DB.
-4. Atajos y command palette mínima (Ctrl+K), foco visible, roles ARIA, estados de vacío y error.
-5. Refresco ante cambios externos: `PRAGMA data_version` al recuperar el foco (ADR-010), invalidando la caché de `library_info`.
+## Fase 3 — Interfaz principal ✅ (2026-11-27)
+
+**Implementación.** Un subagente Sonnet hizo toda la fase; el coordinador la revisó y corrigió el CSS de las tarjetas.
+- **Backend:** comando `check_data_version` (`PRAGMA data_version`), que invalida la caché de `library_info` (ADR-010).
+- **Barra lateral** con Biblioteca, Estado, Idioma y Etiquetas, con conteos y `aria-pressed`. Por debajo de 900 px pasa a ser un panel superpuesto ("☰ Filtros").
+- **Galería virtualizada** (TanStack Virtual por filas y `ResizeObserver`) con portadas solo para las tarjetas visibles, caché LRU de 300 entradas y deduplicación de peticiones en curso. Navegación con flechas, Home, End y Enter.
+- **Temas** Sistema, Claro, Oscuro y Noche, con contraste AA calculado. Preferencias en `localStorage`: `rpglib.theme`, `rpglib.view` y `rpglib.sidebar`.
+- **Refresco ante cambios externos** al recuperar el foco y cada 30 s, con el aviso "Biblioteca actualizada".
+- **Paleta de comandos** (Ctrl+K / Ctrl+Shift+P). "/" enfoca el buscador; Ctrl+1 y Ctrl+2 cambian de vista.
+- Esqueletos de carga, estados vacíos, error con "Reintentar" y `prefers-reduced-motion`.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `cargo test` | 10 + 26 + 3 IPC (incluye detección de escritura externa): **39 ok** |
+| clippy `-D warnings`, `fmt --check` | ok |
+| `npm test` (36), `typecheck`, `tauri build --no-bundle` | ok |
+| App real | Galería con portadas reales, barra lateral con conteos (961/153/46, 831/329, 3 tags), paleta → tema Noche aplicado, hash de la copia sin cambios |
+
+### Pendientes trasladados
+- Los conteos de la barra lateral son globales, no facetados.
+- Un estado o idioma vacío no se puede filtrar.
+- Rendimiento del scroll de la galería no medido.
+- No verificado en Linux.
+
+## Fase 4 — CRUD (en curso)
+Diseño en `docs/CONTRACTS_PHASE4.md` y ADR-012. El usuario autorizó trabajar sobre `juegos.db` el 2026-11-27.

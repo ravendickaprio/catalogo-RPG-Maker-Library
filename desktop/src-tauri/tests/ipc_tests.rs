@@ -183,3 +183,40 @@ fn ipc_config_error_is_reported() {
     assert_eq!(e["kind"], "Config");
     assert_eq!(e["message"], "sin base");
 }
+
+#[test]
+fn check_data_version_detects_external_writes() {
+    let dir = TempDir::new().unwrap();
+    let path = fixture_db(&dir);
+    let (_app, w) = setup(&path);
+
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["total"],
+        3
+    );
+    let a = invoke(&w, "check_data_version", json!({})).unwrap();
+    let b = invoke(&w, "check_data_version", json!({})).unwrap();
+    assert_eq!(a["changed"], false);
+    assert_eq!(b["changed"], false);
+    assert_eq!(a["version"], b["version"]);
+
+    // Escritura externa (otra conexión, como la app Python).
+    let writer = Connection::open(&path).unwrap();
+    writer
+        .execute(
+            "INSERT INTO juegos(titulo, codigo, estado, idioma) VALUES ('Delta', 'RY-4000', 'Sin empezar', 'Inglés')",
+            [],
+        )
+        .unwrap();
+    drop(writer);
+
+    let c = invoke(&w, "check_data_version", json!({})).unwrap();
+    assert_eq!(c["changed"], true);
+    assert_ne!(c["version"], b["version"]);
+    assert_eq!(
+        invoke(&w, "get_library_info", json!({})).unwrap()["total"],
+        4
+    );
+    let d = invoke(&w, "check_data_version", json!({})).unwrap();
+    assert_eq!(d["changed"], false);
+}

@@ -2,6 +2,7 @@ use crate::error::AppError;
 use crate::models::*;
 use crate::repo;
 use rusqlite::Connection;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
@@ -11,14 +12,28 @@ pub struct Ready {
     pub fts_available: bool,
     pub db_file_name: String,
     /// Cached `LibraryInfo`: the connection is read-only for the whole session, so the data
-    /// cannot change under us. The Phase 3 `PRAGMA data_version` refresh must call
-    /// `invalidate_info()` when it detects an external write.
+    /// cannot change under us. `check_data_version` calls
+    /// `invalidate_info()` when `PRAGMA data_version` shows an external write.
     pub info_cache: Arc<Mutex<Option<LibraryInfo>>>,
+    /// Last `PRAGMA data_version` seen on the app connection (-1 = unknown).
+    pub data_version: Arc<AtomicI64>,
+}
+
+/// Result of `check_data_version` (camelCase on the wire).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataVersion {
+    pub version: i64,
+    pub changed: bool,
 }
 
 impl Ready {
     pub fn new(conn: Connection, fts_available: bool, db_file_name: String) -> Self {
+        let v = conn
+            .query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0))
+            .unwrap_or(-1);
         Ready {
+            data_version: Arc::new(AtomicI64::new(v)),
             conn: Arc::new(Mutex::new(conn)),
             fts_available,
             db_file_name,
@@ -102,4 +117,23 @@ pub async fn suggest_game(
     req: SuggestRequest,
 ) -> Result<Suggestion, AppError> {
     run_blocking(&state, move |c, _| repo::suggest(c, &req)).await
+}
+
+/// Compares `PRAGMA data_version` with the last seen value (ADR-010). When it changed
+/// (another connection committed), the cached `LibraryInfo` is invalidated.
+#[tauri::command]
+pub async fn check_data_version(state: State<'_, AppState>) -> Result<DataVersion, AppError> {
+    run_blocking(&state, |c, r| {
+        let v: i64 = c.query_row("PRAGMA data_version", [], |row| row.get(0))?;
+        let prev = r.data_version.swap(v, Ordering::SeqCst);
+        let changed = prev != v;
+        if changed {
+            r.invalidate_info();
+        }
+        Ok(DataVersion {
+            version: v,
+            changed,
+        })
+    })
+    .await
 }

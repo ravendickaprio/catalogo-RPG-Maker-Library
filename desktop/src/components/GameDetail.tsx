@@ -6,9 +6,13 @@ import { estadoClass } from "../lib/estado";
 
 interface Props {
   id: number | null;
+  /** Changes when the library was modified externally: the detail is fetched again. */
+  reloadToken?: number;
+  /** Called when the selected game no longer exists (NotFound). */
+  onMissing?: () => void;
 }
 
-const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id }, ref) {
+const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id, reloadToken = 0, onMissing }, ref) {
   const [game, setGame] = useState<Detail | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,14 +35,20 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail({ id }, re
       (e) => {
         if (cancelled) return;
         setGame(null);
-        setError(normalizeError(e));
+        const err = normalizeError(e);
+        if (err.kind === "NotFound" && onMissing) {
+          onMissing();
+          return;
+        }
+        setError(err);
         setLoading(false);
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, reloadToken]);
 
   const shown = game && game.id === id ? game : null;
   const cover = useCover(shown ? shown.id : null, !!shown?.hasCover);
