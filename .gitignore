@@ -4,3 +4,12 @@
 *.sqlite
 *.sqlite3
 *.sqlite-*
+*.db.backup*
+*.db.bak*
+# Copias de trabajo para el prototipo
+dev-data/
+# Configuración local de la app Python
+config.json
+
+# Backups automáticos de la app de escritorio
+backups/

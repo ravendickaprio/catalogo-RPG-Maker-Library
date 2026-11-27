@@ -1,0 +1,168 @@
+name: build
+
+# Compila y prueba la app de escritorio (Tauri 2). No publica releases ni usa secretos.
+# NO se ha subido a GitHub: requiere la aprobación expresa del usuario.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/desktop-modernization-tauri]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ubuntu:
+    name: Ubuntu (tests, deb, AppImage)
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias de Tauri 2
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+      - name: cargo fmt
+        working-directory: desktop/src-tauri
+        run: cargo fmt --check
+      - name: cargo test
+        working-directory: desktop/src-tauri
+        run: cargo test
+      - name: cargo clippy
+        working-directory: desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Empaquetar (deb, AppImage)
+        run: npx tauri build --bundles deb,appimage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-ubuntu-deb-appimage
+          path: |
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  fedora:
+    name: Fedora (rpm)
+    runs-on: ubuntu-latest
+    container: fedora:40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Dependencias de Tauri 2 (dnf)
+        working-directory: /
+        run: |
+          dnf install -y git gcc gcc-c++ make curl wget file tar xz \
+            webkit2gtk4.1-devel openssl-devel libappindicator-gtk3-devel librsvg2-devel \
+            libxdo-devel gtk3-devel rpm-build
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Rust (rustup)
+        working-directory: .
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - run: node --version && npm --version
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+      - name: cargo test
+        working-directory: desktop/src-tauri
+        run: cargo test
+
+      - name: Empaquetar (rpm)
+        run: npx tauri build --bundles rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-fedora-rpm
+          path: desktop/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+  windows:
+    name: Windows (tests, NSIS)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+      - name: cargo test
+        working-directory: desktop/src-tauri
+        run: cargo test
+
+      - name: Empaquetar (NSIS)
+        run: npx tauri build --bundles nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-nsis
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

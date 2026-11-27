@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RPG Maker Library",
+  "version": "0.9.0",
+  "identifier": "local.rpgmakerlibrary.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      { "title": "RPG Maker Library", "width": 1280, "height": 800, "minWidth": 800, "minHeight": 500, "dragDropEnabled": false }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: cover: http://cover.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "deb", "rpm", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "category": "Utility",
+    "shortDescription": "Catálogo local de juegos RPG Maker",
+    "longDescription": "Catálogo local de juegos RPG Maker con búsqueda rápida. Funciona sin conexión, sin cuenta y sin telemetría.",
+    "windows": {
+      "nsis": { "installMode": "currentUser", "languages": ["Spanish", "English"] }
+    },
+    "linux": {
+      "deb": { "depends": [] },
+      "rpm": { "depends": [] }
+    }
+  }
+}
