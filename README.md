@@ -106,3 +106,19 @@ Este proyecto está en desarrollo. Se irán incorporando mejoras y nuevas funcio
 ## 📄 Licencia
 
 Consulta el archivo `LICENSE` para conocer los términos de uso y distribución del proyecto.
+
+
+## 📝 Herramienta para completar descripciones
+
+Script independiente para revisar juegos con descripción vacía en grupos de hasta 20 registros:
+
+```bash
+python catalogo_rpgmaker-descripciones.py
+```
+
+- Selecciona una tanda de hasta 20 juegos sin descripción.
+- Permite escribir y guardar la descripción individualmente.
+- Al guardar, el juego se retira de la tanda y deja de aparecer en futuras selecciones pendientes.
+- Crea una copia de seguridad de `juegos.db` antes del primer cambio (`juegos.db.backup-before-description-edit`).
+- No altera otros campos ni elimina registros.
+- Usa el `juegos.db` ubicado junto al script.
