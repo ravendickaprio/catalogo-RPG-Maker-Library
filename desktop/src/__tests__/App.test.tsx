@@ -72,7 +72,7 @@ describe("App", () => {
     infoTotal = 4;
     dataChanged = true;
     window.dispatchEvent(new Event("focus"));
-    expect(await screen.findByText("Biblioteca actualizada")).toBeTruthy();
+    expect(await screen.findByText("Biblioteca actualizada por otra aplicación")).toBeTruthy();
     await screen.findByText("4 juegos");
     await waitFor(() => expect(searchCalls().length).toBeGreaterThan(before));
   });

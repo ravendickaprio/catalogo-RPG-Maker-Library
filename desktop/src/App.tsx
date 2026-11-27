@@ -112,7 +112,7 @@ export default function App() {
       loadSession();
       reloadSearch();
       setRefreshTick((n) => n + 1);
-      setToast("Biblioteca actualizada");
+      setToast("Biblioteca actualizada por otra aplicación");
     }, [loadInfo, loadSession, reloadSearch]),
   );
   useEffect(() => {
@@ -340,11 +340,11 @@ export default function App() {
         </h1>
         {info && (
           <>
-            <span className="db-name" title="Base de datos">
+            <span className="db-name" title={`Base de datos: ${info.dbFileName}`}>
               {info.dbFileName}
             </span>
             <span className={"badge " + (readOnly ? "badge-ro" : "badge-edit")}>{readOnly ? "solo lectura" : "edición"}</span>
-            <span className="cell-muted">{info.total} juegos</span>
+            <span className="cell-muted header-count" title={`${info.total} juegos`}>{info.total} juegos</span>
           </>
         )}
         {info && !info.ftsInSync && (
@@ -388,8 +388,8 @@ export default function App() {
         <button type="button" onClick={() => setSettingsOpen(true)} title="Ajustes de la base de datos">
           Ajustes
         </button>
-        <button type="button" onClick={() => setPaletteOpen(true)} title="Paleta de comandos (Ctrl+K)">
-          Comandos
+        <button type="button" className="icon-btn" aria-label="Comandos" title="Paleta de comandos (Ctrl+K)" onClick={() => setPaletteOpen(true)}>
+          ⌕
         </button>
         <button type="button" className="icon-btn" aria-label="Atajos de teclado" title="Atajos de teclado (?)" onClick={() => setHelpOpen(true)}>
           ?
@@ -480,7 +480,7 @@ export default function App() {
           onClose={() => setImportOpen(false)}
           onChanged={() => {
             afterWrite();
-            setToast("Biblioteca actualizada");
+            setToast("Cambios aplicados");
           }}
         />
       )}
@@ -491,7 +491,7 @@ export default function App() {
           onClose={() => setMaintOpen(false)}
           onChanged={() => {
             afterWrite();
-            setToast("Biblioteca actualizada");
+            setToast("Cambios aplicados");
           }}
           onOpenGame={(g) => {
             setMaintOpen(false);

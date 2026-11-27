@@ -1,3 +1,4 @@
+import { formatDateTime } from "../lib/format";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -470,7 +471,7 @@ function HistoryPanel({ readOnly, onChanged }: { readOnly: boolean; onChanged: (
         <ul aria-label="Importaciones anteriores">
           {entries.map((h) => (
             <li key={h.id}>
-              {new Date(h.timestamp).toLocaleString()} · <span className="path-text">{h.root}</span> · {h.insertedCount} importados, {h.skippedCount} omitidos{h.undone ? " · deshecha" : ""}
+              {formatDateTime(h.timestamp)} · <span className="path-text">{h.root}</span> · {h.insertedCount} importados, {h.skippedCount} omitidos{h.undone ? " · deshecha" : ""}
             </li>
           ))}
         </ul>

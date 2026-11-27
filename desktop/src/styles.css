@@ -258,3 +258,15 @@ img.cover-default { object-fit: contain; background: #fff; }
 .review-edit { min-width: 0; }
 @media (max-width: 760px) { .review-body { grid-template-columns: 1fr; } .review-list { max-height: 25vh; } }
 kbd { font-family: inherit; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: .85rem; white-space: nowrap; }
+
+/* Header: single row on wide windows; db name truncates before anything wraps. */
+.db-name { min-width: 0; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-count, .app-header .badge, .app-header h1 { white-space: nowrap; }
+@media (min-width: 1100px) {
+  .app-header { flex-wrap: nowrap; }
+  .app-header > * { flex-shrink: 0; }
+  .app-header > .db-name { flex-shrink: 1; }
+  .app-header .theme-select select { max-width: 160px; }
+}
+/* Review dialog: the form action bar stays visible while the long form scrolls. */
+.review-dialog form .dialog-actions { position: sticky; bottom: -18px; z-index: 2; background: var(--surface); border-top: 1px solid var(--border); padding: 10px 0; margin-bottom: -18px; }

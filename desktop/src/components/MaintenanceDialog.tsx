@@ -1,3 +1,4 @@
+import { formatDateTime } from "../lib/format";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -826,7 +827,7 @@ function BatchesPanel({ readOnly, onChanged, onBusy }: { readOnly: boolean; onCh
         <ul aria-label="Lotes anteriores">
           {entries.map((b) => (
             <li key={b.id}>
-              {new Date(b.timestamp).toLocaleString()} · {b.description} · {b.changed} cambios{b.undone ? " · deshecho" : ""}
+              {formatDateTime(b.timestamp)} · {b.description} · {b.changed} cambios{b.undone ? " · deshecho" : ""}
             </li>
           ))}
         </ul>

@@ -19,6 +19,42 @@ export function useDialog(onEscape: () => void, initialSelector?: string) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const escRef = useRef(onEscape);
+  escRef.current = onEscape;
+  // When focus escapes to <body> (e.g. the focused button became disabled), the element handler never
+  // sees the key. Only the topmost modal (last [aria-modal] in the DOM) reacts, and only to events
+  // whose target is outside every dialog, so it never double-fires with onKeyDown.
+  useEffect(() => {
+    const isTop = () => {
+      const all = document.querySelectorAll('[aria-modal="true"]');
+      return !!ref.current && all.length > 0 && all[all.length - 1] === ref.current;
+    };
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !isTop()) return;
+      const t = e.target as Element | null;
+      if (t && t.closest?.('[aria-modal="true"]')) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        escRef.current();
+      } else if (e.key === "Tab") {
+        const first = ref.current?.querySelector<HTMLElement>(FOCUSABLE);
+        e.preventDefault();
+        (first ?? ref.current)?.focus();
+      }
+    };
+    const onFocusOut = () => {
+      window.setTimeout(() => {
+        const a = document.activeElement;
+        if (ref.current && isTop() && (!a || a === document.body)) ref.current.focus();
+      }, 0);
+    };
+    document.addEventListener("keydown", onDocKey);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("keydown", onDocKey);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, []);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.preventDefault();

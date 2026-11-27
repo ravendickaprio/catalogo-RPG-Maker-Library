@@ -265,3 +265,32 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 ### Pendientes
 - No se probó en la ventana real (la sesión no controla la GUI).
 - No verificado en Linux.
+
+## Prueba de la interfaz real (2026-11-27)
+**Método.** Se lanzó el ejecutable de release contra una **copia** de la DB (`RPGLIB_DB_PATH`), con el perfil de WebView2 en una carpeta temporal (`WEBVIEW2_USER_DATA_FOLDER`), y se controló la ventana por CDP (`--remote-debugging-port` en 127.0.0.1) con `playwright-core`, instalado fuera del repo. Se hicieron capturas en cada paso y se registraron los errores de consola. Al terminar se borró la carpeta `Roaming\local.rpgmakerlibrary.desktop` creada por la prueba (solo contenía el historial de la importación de prueba). El hash de `juegos.db` no cambió.
+
+**Recorrido OK:**
+- bienvenida;
+- galería con la imagen por defecto y tema Noche;
+- búsqueda (15 resultados en 2,8 ms);
+- ficha, editar y Escape;
+- favorito activado, filtro «Mostrar favoritos» y favorito desactivado;
+- `?` abre la ayuda (y no se abre al escribir en el buscador);
+- estadísticas con clic para filtrar;
+- mantenimiento y comprobación de rutas (13);
+- Ctrl+N bloqueado con un diálogo abierto;
+- revisión por tandas (Ctrl+Enter guarda y avanza; confirmación si hay cambios sin guardar);
+- importador: analizar, importar con backup, historial y deshacer;
+- juego sugerido y Ajustes.
+
+**0 errores de consola.**
+
+**Defectos encontrados y corregidos (verificados de nuevo en la ventana real):**
+1. Escape no cerraba un diálogo cuando el foco caía en `body` (un botón que se desactiva). `useDialog` escucha ahora en `document`; solo reacciona el diálogo superior y devuelve el foco al diálogo.
+2. La cabecera ocupaba dos filas a 1280 px. Ahora ocupa una (37 px): «Comandos» pasa a ser un icono y el nombre de la DB se trunca con elipsis.
+3. Las barras de estadísticas se escalaban al máximo de cada lista (una tag con el 0,1 % aparecía llena). Ahora se escalan respecto al total, sin barra cuando el valor es 0, y el tiempo sale como «10,8 ms».
+4. Fechas del historial en inglés → formato `es-ES` («27/11/26, 14:25»), con un formateador compartido en `lib/format.ts`.
+5. En la revisión por tandas los botones de guardar quedaban fuera de la vista; ahora la barra de acciones es fija abajo.
+6. Aparecía el aviso «Biblioteca actualizada» tras una acción propia. **Causa real:** `App.tsx` usaba ese mismo texto en el `onChanged` de Importar y de Mantenimiento; se comprobó que las escrituras propias, el backup y el deshacer no cambian `PRAGMA data_version`. Se descartó la ventana de supresión de 2 s propuesta, que partía de una premisa falsa y podía ocultar cambios externos reales. Ahora los textos son distintos: «Cambios aplicados» para las acciones propias y «Biblioteca actualizada por otra aplicación» para los cambios externos.
+
+**Evidencias:** `npm test` 125 ok, typecheck ok y build de release ok.

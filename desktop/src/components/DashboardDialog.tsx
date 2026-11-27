@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { getDashboard, normalizeError } from "../api/client";
 import type { CountItem, Dashboard } from "../api/types";
+import { formatMs } from "../lib/format";
 import { useDialog } from "../hooks/useDialog";
 
 export type DashboardFilter = { kind: "estado" | "idioma" | "tag"; value: string };
@@ -31,7 +32,6 @@ function BarTable({
   onFilter: (f: DashboardFilter) => void;
   labelOf?: (v: string) => string;
 }) {
-  const max = Math.max(1, ...items.map((i) => i.count));
   return (
     <section className="dash-card" aria-label={title}>
       <h3>{title}</h3>
@@ -62,7 +62,7 @@ function BarTable({
                 <td className="dash-num">{it.count}</td>
                 <td className="dash-num dash-pct">{fmtPct(it.count, total)}</td>
                 <td className="dash-bar-cell" aria-hidden="true">
-                  <div className="dash-bar" style={{ width: `${(it.count / max) * 100}%` }} />
+                  {it.count > 0 && <div className="dash-bar" style={{ width: `max(2px, ${total > 0 ? (it.count / total) * 100 : 0}%)` }} />}
                 </td>
               </tr>
             ))}
@@ -128,7 +128,7 @@ export default function DashboardDialog({ onClose, onFilter }: Props) {
         {data && pivot && (
           <>
             <p className="dash-total" role="status">
-              <strong>{data.total}</strong> juegos <span className="cell-muted dash-elapsed">· calculado en {data.elapsedMs} ms</span>
+              <strong>{data.total}</strong> juegos <span className="cell-muted dash-elapsed">· calculado en {formatMs(data.elapsedMs)}</span>
             </p>
             <ul className="dash-tiles" aria-label="Cobertura de datos">
               {tiles.map((t) => (

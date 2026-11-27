@@ -82,7 +82,7 @@ describe("Dashboard", () => {
     expect(tiles.getByText("50 %")).toBeTruthy();
     expect(tiles.getByText("75 %")).toBeTruthy();
     expect(tiles.getByText("100 %")).toBeTruthy();
-    expect(screen.getByText(/calculado en 12 ms/)).toBeTruthy();
+    expect(screen.getByText(/calculado en 12,0 ms/)).toBeTruthy();
     const estados = within(screen.getByRole("table", { name: "Estados" }));
     const row = estados.getByRole("row", { name: /Terminado/ });
     expect(row.textContent).toContain("120");
