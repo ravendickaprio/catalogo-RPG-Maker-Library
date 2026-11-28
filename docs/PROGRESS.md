@@ -337,3 +337,52 @@ Los benchmarks están en `docs/BENCHMARKS.md` (B-002).
 - La ruta de fallo al reabrir tras restaurar no tiene test (requeriría inyectar el fallo).
 - Las búsquedas de 1–2 caracteres con 50 000 juegos tardan unos 135 ms, por encima del objetivo de 100 ms.
 - Los instaladores no están firmados: Windows SmartScreen puede avisar al ejecutarlos. La firma de código requiere un certificado y se deja para cuando se decida publicar.
+
+## Fase 10 — Recuperación de metadatos desde Ryuugames (2026-11-27, ADR-021)
+Rama `feature/ryuugames-metadata`. Herramienta independiente en `tools/ryuugames/` (Python + Tkinter + Pillow). No toca `desktop/`.
+
+**Implementado:**
+- filtro `RY-` + `R` antes de cualquier solicitud;
+- búsqueda por la API REST de WordPress (una solicitud por juego, con la portada incluida mediante `_embed`);
+- validación conservadora;
+- limpieza del título y descripción de 400 caracteres como máximo;
+- portada en WebP 300×300 q65, como el legacy, con caché local;
+- sesión reanudable;
+- backup con la API de SQLite + `integrity_check`;
+- aplicación en una transacción `BEGIN IMMEDIATE` que vuelve a comprobar que la descripción sigue vacía;
+- informes TXT/CSV y log;
+- GUI con dry run, cancelación, progreso y selección por fila.
+
+### Evidencias ejecutadas
+| Verificación | Resultado |
+|---|---|
+| `py -3.14 -m unittest discover -s tools/ryuugames` | **27 ok**, sin red, con DB sintética |
+| Inspección de `juegos.db` (solo lectura) | 1161 juegos, 776 sin descripción, 621 elegibles, 155 excluidos, 0 inválidos |
+| Búsqueda real de 9 códigos (3 RA, 1 basura, 5 RJ) sobre una **copia** | 7 verificadas, 1 dudosa (`RA25078923`: el código solo aparece en el contenido), 1 no encontrada (`PR`); 16 solicitudes en 46 s con intervalo de 3 s; ningún bloqueo |
+| Aplicar las 7 sobre la copia | cambian exactamente 7 filas, con 7 portadas (13–16 KB); el resto de columnas y `juego_tags` sin cambios; `integrity_check` ok; FTS actualizado por los triggers |
+| GUI (instanciada sin interacción, sobre la copia) | contadores, tabla, detalle y marcado correctos |
+
+**Fallos encontrados en la prueba real y corregidos:**
+- `PR` se verificaba por coincidir con «**pr**epare» (el límite de palabra solo cubría dígitos). Ahora se exige el límite también con letras y los códigos sin dígitos nunca se verifican.
+- Dos códigos tenían dos entradas (japonés e `[ENG]`) y quedaban como dudosos. Ahora se elige la única `[ENG]`.
+
+**Auditoría independiente (agente Haiku, solo lectura) y correcciones:**
+- *Corregidos:*
+  - códigos cortos (`R1`) se podían verificar: ahora se exigen ≥5 dígitos;
+  - un título autorizado se reemplazaba aunque se hubiera editado entretanto: ahora se exige que no haya cambiado;
+  - el error de `BEGIN` quedaba oculto por el `ROLLBACK`;
+  - `IncompleteRead` no se reintentaba;
+  - se podía cerrar la ventana durante «Aplicar»;
+  - se aceptaban portadas por `http`;
+  - un título formado solo por etiquetas se proponía como título;
+  - no se reconocía `src` con comillas simples.
+- *Parcialmente aceptado:* la descripción ya no se corta en una imagen inicial, pero sí en una imagen posterior al texto o en «LINK DOWNLOAD». Al dejar de cortar en las imágenes, dos entradas reales incluían «LINK DOWNLOAD ( … MB )», que a veces es un `<span>`.
+- *Encontrado al ampliar las pruebas:* con la DB bloqueada por otra app, `Connection.backup()` reintentaba sin límite y «Aplicar» se colgaba. Ahora se toma primero el bloqueo (5 s como máximo) y se hace el backup con una conexión de solo lectura.
+- *No aplicado:* `fsync` de la sesión. Si el JSON se corrompe, se informa al abrir la DB y la DB no se ve afectada.
+
+**Ejecución real final** sobre una copia nueva: 3 códigos (2 verificadas aplicadas con portada, 1 dudosa sin tocar). El backup conserva el estado previo y el hash de `juegos.db` no cambió.
+
+### Pendientes
+- Ejecución completa sobre `juegos.db` (unos 621 códigos, entre 40 y 60 minutos). La decide el usuario desde la GUI.
+- Sin probar en Nobara/Linux. Solo se usan la stdlib, Tkinter y Pillow.
+- Algunas descripciones unen líneas separadas por `<br>` sin puntuación, porque así vienen en el original.

@@ -99,6 +99,12 @@ Requerimiento: `docs/Nuevo_requerimiento.md`. Decisiones: ADR-021. Rama propia: 
 9. **Auditoría independiente** (agente Haiku) del filtro, la validación, la seguridad SQLite y el parsing. Corrección (agente Sonnet). Revisión final y prueba real con 5 a 10 códigos sobre una **copia** de la DB.
 10. README, `requirements.txt` (solo `Pillow`), entrada en `docs/PROGRESS.md`, commit local.
 
+### Estado (2026-11-27)
+Las tareas 1 a 8 y 10 están implementadas en `tools/ryuugames/`. La tarea 9 está en curso: la auditoría Haiku y la prueba real ya se hicieron (ver `docs/PROGRESS.md`). Cambios respecto al plan:
+- la validación prefiere la única entrada `[ENG]` cuando hay varias;
+- los códigos con menos de 5 dígitos nunca se verifican;
+- el backup se hace con el bloqueo de escritura ya tomado.
+
 ### Criterios de salida
 Se cumplen los criterios del §21 del requerimiento, las pruebas pasan en Windows, la ejecución real sobre la copia está documentada con cifras medidas, y la DB real solo se modifica cuando el usuario pulsa «Aplicar».
 
