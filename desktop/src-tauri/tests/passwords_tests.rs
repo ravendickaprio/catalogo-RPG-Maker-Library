@@ -27,7 +27,11 @@ fn create_edit_query_delete_against_the_real_store() {
         Some("segunda ñ 日本")
     );
 
-    let status = with_password(SERVICE, &[page.clone(), other.clone(), " ".into()]).unwrap();
+    let status = with_password(
+        SERVICE,
+        &[page.clone(), other.clone(), " ".into(), "x".repeat(101)],
+    )
+    .unwrap();
     assert_eq!(status, vec![page.clone()]);
 
     delete(SERVICE, &page).unwrap();

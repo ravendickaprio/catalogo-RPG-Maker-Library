@@ -73,10 +73,11 @@ pub fn delete(service: &str, pagina: &str) -> Result<(), AppError> {
     }
 }
 
-/// Pages (as given) that have a password. The secrets stay in Rust.
+/// Pages (as given) that have a password. The secrets stay in Rust. Invalid page names (e.g. a
+/// >100-char value written by another tool) are skipped instead of failing the whole list.
 pub fn with_password(service: &str, paginas: &[String]) -> Result<Vec<String>, AppError> {
     let mut out = Vec::new();
-    for p in paginas.iter().filter(|p| !p.trim().is_empty()) {
+    for p in paginas.iter().filter(|p| page_key(p).is_ok()) {
         if get(service, p)?.is_some() {
             out.push(p.clone());
         }

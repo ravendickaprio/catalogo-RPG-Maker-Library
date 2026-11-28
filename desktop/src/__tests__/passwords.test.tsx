@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PasswordsDialog from "../components/PasswordsDialog";
-import PagePassword from "../components/PagePassword";
+import PagePassword, { PASSWORDS_CHANGED } from "../components/PagePassword";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const mockInvoke = vi.mocked(invoke);
@@ -89,5 +89,13 @@ describe("PagePassword (game detail)", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /Copiar/ })).toBeNull());
     rerender(<PagePassword pagina="" />);
     expect(calls("page_passwords_status").every((c) => (c[1] as { paginas: string[] }).paginas[0] !== "")).toBe(true);
+  });
+
+  it("re-checks when the passwords dialog reports a change", async () => {
+    render(<PagePassword pagina="Otome" />);
+    await waitFor(() => expect(calls("page_passwords_status")).toHaveLength(1));
+    store.set("otome", "x");
+    window.dispatchEvent(new Event(PASSWORDS_CHANGED));
+    await screen.findByRole("button", { name: "Copiar contraseña de Otome" });
   });
 });

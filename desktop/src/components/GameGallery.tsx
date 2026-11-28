@@ -44,6 +44,7 @@ function Card({ game, width, selected, onSelect, onOpen }: {
           alt=""
         />
       </div>
+      {game.pagina && <span className="card-chip">{game.pagina}</span>}
       <div className="card-info">
         <span className="card-title" title={game.titulo}>
           {game.titulo}

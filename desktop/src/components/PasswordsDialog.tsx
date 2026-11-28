@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { deletePagePassword, normalizeError, pagePasswordsStatus, setPagePassword } from "../api/client";
 import { useDialog } from "../hooks/useDialog";
 import ConfirmDialog from "./ConfirmDialog";
-import { PasswordActions } from "./PagePassword";
+import { PASSWORDS_CHANGED, PasswordActions } from "./PagePassword";
 
 interface Props {
   /** Pages present in the library (vocabulary from the `pagina` column). */
@@ -40,6 +40,7 @@ export default function PasswordsDialog({ paginas, onClose, onToast }: Props) {
     setBusy(true);
     try {
       await fn();
+      window.dispatchEvent(new Event(PASSWORDS_CHANGED));
       onToast(msg);
       await reload();
       return true;
