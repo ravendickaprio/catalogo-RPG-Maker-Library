@@ -24,6 +24,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    css: { include: [/styles\.css/] }, // cardStyles.test.ts reads the real stylesheet
     // Node >= 25 ships its own experimental `localStorage` global (undefined without
     // --localstorage-file) that shadows jsdom's; disable it so tests behave on any Node version.
     poolOptions: { forks: { execArgv: ["--no-experimental-webstorage"] }, threads: { execArgv: ["--no-experimental-webstorage"] } },

@@ -42,7 +42,7 @@ import type {
   WriteOptions,
 } from "./types";
 
-const KINDS = ["NotFound", "InvalidInput", "Database", "Config", "Conflict", "DuplicateCode", "ReadOnly", "Busy"];
+const KINDS = ["NotFound", "InvalidInput", "Database", "Config", "Conflict", "DuplicateCode", "ReadOnly", "Busy", "SecureStorage"];
 
 export function isAppError(e: unknown): e is AppError {
   if (typeof e !== "object" || e === null) return false;
@@ -131,6 +131,14 @@ export const deleteOrphanTags = () => call<BatchResult>("delete_orphan_tags");
 export const rebuildSearchIndex = () => call<IndexStatus>("rebuild_search_index");
 export const listBatches = () => call<BatchEntry[]>("list_batches");
 export const undoLastBatch = () => call<UndoBatchResult>("undo_last_batch");
+
+// Contraseñas por página (ADR-019): viven en el almacén seguro del sistema, no en SQLite.
+export const pagePasswordsStatus = (paginas: string[]) => call<string[]>("page_passwords_status", { paginas });
+/** Only for an explicit «Mostrar»: copying goes through `copyPagePassword` and never reaches JS. */
+export const getPagePassword = (pagina: string) => call<string | null>("get_page_password", { pagina });
+export const setPagePassword = (pagina: string, password: string) => call<null>("set_page_password", { pagina, password });
+export const deletePagePassword = (pagina: string) => call<null>("delete_page_password", { pagina });
+export const copyPagePassword = (pagina: string) => call<null>("copy_page_password", { pagina });
 
 // Fase 8
 export const getDashboard = () => call<Dashboard>("get_dashboard");

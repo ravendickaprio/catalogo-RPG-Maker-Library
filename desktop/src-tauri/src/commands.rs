@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::models::*;
 use crate::settings::Settings;
-use crate::{backup, db, images, importer, maintenance, migrate, repo, write};
+use crate::{backup, db, images, importer, maintenance, migrate, passwords, repo, write};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -619,6 +619,57 @@ pub async fn export_library(
 ) -> Result<backup::ExportResult, AppError> {
     run_blocking(&state, move |c, r| {
         backup::export_library(c, &db_path_of(r)?, &path, &format)
+    })
+    .await
+}
+
+// --- Contraseñas por página (ADR-019). Keyring calls can block (D-Bus, unlock prompts).
+
+async fn keyring_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| AppError::SecureStorage(format!("Tarea interrumpida: {e}")))?
+}
+
+#[tauri::command]
+pub async fn page_passwords_status(paginas: Vec<String>) -> Result<Vec<String>, AppError> {
+    if paginas.len() > 500 {
+        return Err(AppError::InvalidInput("Demasiadas páginas.".into()));
+    }
+    keyring_blocking(move || passwords::with_password(passwords::SERVICE, &paginas)).await
+}
+
+/// Only for an explicit «Mostrar»; copying never sends the secret to the webview.
+#[tauri::command]
+pub async fn get_page_password(pagina: String) -> Result<Option<String>, AppError> {
+    keyring_blocking(move || passwords::get(passwords::SERVICE, &pagina)).await
+}
+
+#[tauri::command]
+pub async fn set_page_password(pagina: String, password: String) -> Result<(), AppError> {
+    keyring_blocking(move || passwords::set(passwords::SERVICE, &pagina, &password)).await
+}
+
+#[tauri::command]
+pub async fn delete_page_password(pagina: String) -> Result<(), AppError> {
+    keyring_blocking(move || passwords::delete(passwords::SERVICE, &pagina)).await
+}
+
+#[tauri::command]
+pub async fn copy_page_password<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    pagina: String,
+) -> Result<(), AppError> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    keyring_blocking(move || {
+        let pw = passwords::get(passwords::SERVICE, &pagina)?.ok_or_else(|| {
+            AppError::NotFound("Esta página no tiene contraseña guardada.".into())
+        })?;
+        app.clipboard()
+            .write_text(pw)
+            .map_err(|_| AppError::SecureStorage("No se pudo copiar al portapapeles.".into()))
     })
     .await
 }

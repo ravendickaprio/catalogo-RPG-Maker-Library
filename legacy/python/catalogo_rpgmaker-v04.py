@@ -59,7 +59,8 @@ PORTADA_W, PORTADA_H = 140, 190   # tamaño de portada en la galería
 if getattr(sys, "frozen", False):          # por si lo empaquetas con PyInstaller
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    # juegos.db, config.json y fuentes/ siguen en la raíz del repositorio (dos niveles arriba)
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DB_PATH = os.path.join(BASE_DIR, "juegos.db")
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 FUENTES_DIR = os.path.join(BASE_DIR, "fuentes")

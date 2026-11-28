@@ -21,6 +21,9 @@ pub enum AppError {
     /// SQLITE_BUSY / SQLITE_LOCKED: otra aplicación mantiene la base bloqueada.
     #[error("{0}")]
     Busy(String),
+    /// Almacén seguro de contraseñas del sistema no disponible o con error (ADR-019).
+    #[error("{0}")]
+    SecureStorage(String),
 }
 
 impl AppError {
@@ -34,6 +37,7 @@ impl AppError {
             AppError::DuplicateCode(_) => "DuplicateCode",
             AppError::ReadOnly(_) => "ReadOnly",
             AppError::Busy(_) => "Busy",
+            AppError::SecureStorage(_) => "SecureStorage",
         }
     }
 }

@@ -5,7 +5,8 @@ import os, random, sqlite3, tkinter as tk
 from tkinter import messagebox, ttk
 
 LIMIT = 20
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# juegos.db sigue en la raíz del repositorio (tres niveles arriba)
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DB_PATH = os.path.join(BASE_DIR, "juegos.db")
 BACKUP_PATH = DB_PATH + ".backup-before-description-edit"
 
