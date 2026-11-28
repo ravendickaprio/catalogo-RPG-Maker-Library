@@ -17,3 +17,4 @@ imgs/
 
 # Salida local de tools/ryuugames (caché de portadas, sesión, informes, logs)
 recuperacion_ryuugames/
+__pycache__/
