@@ -48,8 +48,9 @@ Comando local de aplicación para elegir un juego elegible al azar cuyo estado n
 ## Posible estructura
 ```text
 repository/
-├── catalogo_rpgmaker-v04.py   # legacy, sin reemplazo durante desarrollo
-├── legacy/                     # opcional, solo si se acuerda moverlo
+├── juegos.db                   # base real (no versionada); la usan la app y el legacy
+├── legacy/python/              # app Python legacy (catalogo_rpgmaker-v04.py)
+│   └── herramientas/           # importador y editores por tandas legacy
 ├── desktop/
 │   ├── src/
 │   │   ├── components/

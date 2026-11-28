@@ -45,13 +45,13 @@ Incluye un script independiente para importar juegos existentes a la biblioteca 
 ### Ejecución
 
 ```bash
-python Importar_Juegos_RPG_Maker_v2.py
+python legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py
 ```
 
 También permite indicar las rutas directamente:
 
 ```bash
-python Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/ruta/a/juegos.db"
+python legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/ruta/a/juegos.db"
 ```
 
 ## 🛠️ Tecnologías
@@ -66,8 +66,8 @@ python Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/rut
 
 | Archivo | Descripción |
 |---|---|
-| `catalogo_rpgmaker-v04.py` | Aplicación principal del catálogo. |
-| `Importar_Juegos_RPG_Maker_v2.py` | Herramienta independiente para importar juegos existentes. |
+| `legacy/python/catalogo_rpgmaker-v04.py` | Aplicación principal del catálogo (versión Python legacy). |
+| `legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py` | Herramienta independiente para importar juegos existentes. |
 | `juegos.db` | Base de datos SQLite de la biblioteca. |
 | `config.json` | Preferencias y configuración visual. |
 
@@ -113,7 +113,7 @@ Consulta el archivo `LICENSE` para conocer los términos de uso y distribución 
 Script independiente para revisar juegos con descripción vacía en grupos de hasta 20 registros:
 
 ```bash
-python catalogo_rpgmaker-descripciones.py
+python legacy/python/herramientas/catalogo_rpgmaker-descripciones.py
 ```
 
 - Selecciona una tanda de hasta 20 juegos sin descripción.
@@ -122,7 +122,7 @@ python catalogo_rpgmaker-descripciones.py
 - Crea una copia de seguridad de `juegos.db` antes del primer cambio (`juegos.db.backup-before-description-edit`).
 - Incluye navegación anterior, omitir, guardar y guardar/siguiente.
 - No altera otros campos ni elimina registros.
-- Usa el `juegos.db` ubicado junto al script.
+- Usa el `juegos.db` de la raíz del repositorio.
 
 
 ## Archivos de base de datos y Git
@@ -132,10 +132,10 @@ El archivo `.gitignore` excluye bases de datos locales (`.db`, `.sqlite`, `.sqli
 
 ## Editor independiente de registros (descripciones)
 
-La herramienta `catalogo_rpgmaker-editor-completo.py` conserva el flujo de revisión por tandas de hasta 20 juegos con descripción pendiente y la identidad visual del catálogo v4 (temas Claro, Oscuro y Noche). Además de completar la descripción, permite editar los campos de la ficha: título, código, estado, idioma, página, tipo, puntuación, tags, ruta e imagen.
+La herramienta `legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py` conserva el flujo de revisión por tandas de hasta 20 juegos con descripción pendiente y la identidad visual del catálogo v4 (temas Claro, Oscuro y Noche). Además de completar la descripción, permite editar los campos de la ficha: título, código, estado, idioma, página, tipo, puntuación, tags, ruta e imagen.
 
 ```bash
-python catalogo_rpgmaker-editor-completo.py
+python legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py
 ```
 
 Antes de guardar cambios crea una copia de seguridad local de la base de datos. Los registros guardados dejan de aparecer en las tandas pendientes. Esta utilidad no elimina juegos ni modifica los archivos de juego en sus carpetas.

@@ -1,7 +1,7 @@
 # Instrucciones de Claude Code — RPG Maker Library
 
 ## Misión
-Modernizar gradualmente la aplicación `catalogo_rpgmaker-v04.py` para Windows y Linux, con prioridad en velocidad de búsqueda, rendimiento, UX moderna, operación local y preservación de datos, usando Rust + Tauri 2, React + TypeScript y SQLite.
+Modernizar gradualmente la aplicación `legacy/python/catalogo_rpgmaker-v04.py` para Windows y Linux, con prioridad en velocidad de búsqueda, rendimiento, UX moderna, operación local y preservación de datos, usando Rust + Tauri 2, React + TypeScript y SQLite.
 
 ## Equipo y coordinación
 - **Claude Opus 5 (coordinador/arquitecto):** define arquitectura, divide tareas, asigna agentes, mantiene el plan, revisa interfaces entre componentes, resuelve conflictos, valida resultados y toma decisiones. No delegues decisiones arquitectónicas críticas sin revisar.

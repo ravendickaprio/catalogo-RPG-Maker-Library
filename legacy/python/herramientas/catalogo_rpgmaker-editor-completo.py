@@ -5,7 +5,8 @@ import io, os, random, sqlite3, tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
-BASE=os.path.dirname(os.path.abspath(__file__)); DB=os.path.join(BASE,"juegos.db")
+# juegos.db sigue en la raíz del repositorio (tres niveles arriba)
+BASE=os.path.abspath(os.path.join(os.path.dirname(__file__),"..","..","..")); DB=os.path.join(BASE,"juegos.db")
 BACKUP=DB+".backup-before-description-edit"
 ESTADOS=["Sin empezar","Empezado","Terminado"]; IDIOMAS=["Español","Inglés","Japonés"]
 PAGINAS=["Elonichan","Estahi0","lewdzone","M0RETranslations","Otome","ryuugames","Shorts","Youtube"]
