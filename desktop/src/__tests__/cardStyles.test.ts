@@ -32,4 +32,14 @@ describe("game card styles", () => {
   it("reduced motion disables transitions and the hover lift", () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[^\n]*\.card:hover \{ transform: none; \}/);
   });
+
+  it("panels, menus and buttons carry the blue top-left halo, and button states keep it", () => {
+    expect(css).toMatch(/--halo-panel: radial-gradient\(circle at 0 0, var\(--halo\) 0, transparent \d+px\)/);
+    expect(rule(".sidebar, .list-pane, .detail-pane, .dialog, .tools-list")).toMatch(/background-image: var\(--halo-panel\)/);
+    expect(css).toMatch(/\nbutton \{ background-image: var\(--halo-btn\); \}/); // later than `button { cursor }`, wins
+    expect(rule("button:hover:not(:disabled)")).toMatch(/background-image: var\(--halo-btn-hover\)/);
+    // The `background` shorthand would reset background-image and drop the halo on these states.
+    for (const sel of ["button.primary, .btn-suggest", 'button[aria-pressed="true"]', "button.danger:hover:not(:disabled)"])
+      expect(rule(sel)).not.toMatch(/(^|[\s;])background:/);
+  });
 });

@@ -9,7 +9,7 @@
   --todo-bg: #e5e8ee; --todo-fg: #3b4252; --doing-bg: #ffe8b3; --doing-fg: #6b4400;
   --done-bg: #c9f0d6; --done-fg: #11582b; --other-bg: #ead9f7; --other-fg: #4b2470;
   --err-bg: #fde2e2; --err-fg: #8a1c1c; --warn-bg: #fff1c2; --warn-fg: #6b4400;
-  --accent-2: #7c3aed; --radius: 14px;
+  --accent-2: #7c3aed; --radius: 14px; --halo: rgba(37, 99, 235, .16); --halo-hi: rgba(37, 99, 235, .3);
   --mono: "Fira Code", ui-monospace, Consolas, "DejaVu Sans Mono", monospace;
   font-family: "Fira Sans", system-ui, -apple-system, "Segoe UI", "Noto Sans", Roboto, Arial, sans-serif;
   font-size: 15px; color-scheme: light dark;
@@ -17,7 +17,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #0b0e17; --surface: #121726; --surface-2: #1a2034; --text: #e7eaf3; --muted: #9aa3ba;
-    --border: #262e47; --accent: #22d3ee; --accent-text: #04161b; --focus: #67e8f9; --sel: #13324a; --accent-2: #a78bfa;
+    --border: #262e47; --accent: #22d3ee; --accent-text: #04161b; --focus: #67e8f9; --sel: #13324a; --accent-2: #a78bfa; --halo: rgba(37, 99, 235, .38); --halo-hi: rgba(59, 130, 246, .6);
     --todo-bg: #343a48; --todo-fg: #dfe3ec; --doing-bg: #5a4210; --doing-fg: #ffe3a0;
     --done-bg: #1c4d31; --done-fg: #b9f0cd; --other-bg: #46305c; --other-fg: #e6d3f7;
     --err-bg: #5a2020; --err-fg: #ffd2d2; --warn-bg: #5a4210; --warn-fg: #ffe3a0;
@@ -34,7 +34,7 @@
 }
 :root[data-theme="dark"] {
     --bg: #0b0e17; --surface: #121726; --surface-2: #1a2034; --text: #e7eaf3; --muted: #9aa3ba;
-    --border: #262e47; --accent: #22d3ee; --accent-text: #04161b; --focus: #67e8f9; --sel: #13324a; --accent-2: #a78bfa;
+    --border: #262e47; --accent: #22d3ee; --accent-text: #04161b; --focus: #67e8f9; --sel: #13324a; --accent-2: #a78bfa; --halo: rgba(37, 99, 235, .38); --halo-hi: rgba(59, 130, 246, .6);
     --todo-bg: #343a48; --todo-fg: #dfe3ec; --doing-bg: #5a4210; --doing-fg: #ffe3a0;
     --done-bg: #1c4d31; --done-fg: #b9f0cd; --other-bg: #46305c; --other-fg: #e6d3f7;
     --err-bg: #5a2020; --err-fg: #ffd2d2; --warn-bg: #5a4210; --warn-fg: #ffe3a0;
@@ -42,7 +42,7 @@
 }
 :root[data-theme="night"] {
   --bg: #070a14; --surface: #0e1424; --surface-2: #161e36; --text: #e9ebf3; --muted: #a6b0cb;
-  --border: #2a3558; --accent: #ffb454; --accent-text: #1a1100; --focus: #ffd08a; --sel: #26294a; --accent-2: #ff6fb5;
+  --border: #2a3558; --accent: #ffb454; --accent-text: #1a1100; --focus: #ffd08a; --sel: #26294a; --accent-2: #ff6fb5; --halo: rgba(37, 99, 235, .38); --halo-hi: rgba(59, 130, 246, .6);
   --todo-bg: #1f2a4a; --todo-fg: #dfe6f7; --doing-bg: #5a3d0a; --doing-fg: #ffe0a8;
   --done-bg: #123d2c; --done-fg: #b3f0cf; --other-bg: #3a2a5c; --other-fg: #e6d9fb;
   --err-bg: #55202a; --err-fg: #ffd5d9; --warn-bg: #5a3d0a; --warn-fg: #ffe0a8;
@@ -64,10 +64,10 @@ body { background: var(--bg); color: var(--text); }
 .search-input { flex: 1 1 260px; min-width: 200px; }
 input, select, button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
 button { cursor: pointer; }
-button:hover:not(:disabled) { background: var(--surface-2); }
+button:hover:not(:disabled) { background-color: var(--surface-2); background-image: var(--halo-btn-hover); }
 button:disabled { opacity: .55; cursor: default; }
-button.primary, .btn-suggest { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
-button.primary:hover:not(:disabled), .btn-suggest:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+button.primary, .btn-suggest { background-color: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.primary:hover:not(:disabled), .btn-suggest:hover:not(:disabled) { background-color: var(--accent); filter: brightness(1.1); }
 .btn-suggest { padding: 8px 14px; }
 .body { flex: 1; min-height: 0; display: flex; gap: 12px; position: relative; }
 .main { flex: 1; min-width: 0; min-height: 0; display: flex; gap: 12px; }
@@ -116,8 +116,8 @@ button.primary:hover:not(:disabled), .btn-suggest:hover:not(:disabled) { backgro
 .view-toggle button { border-radius: 0; }
 .view-toggle button:first-child { border-radius: 8px 0 0 8px; }
 .view-toggle button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
-button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
-button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+button[aria-pressed="true"] { background-color: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button[aria-pressed="true"]:hover:not(:disabled) { background-color: var(--accent); filter: brightness(1.1); }
 .sidebar-wrap { display: contents; }
 .sidebar { width: 220px; flex: none; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; }
 .sidebar ul { list-style: none; margin: 0; padding: 0; }
@@ -184,7 +184,7 @@ button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); fi
 .tag-editor .tags { margin: 0 0 6px; }
 .detail-actions { justify-content: flex-start; }
 button.danger { border-color: var(--danger, #d33); color: var(--danger, #d33); }
-button.danger:hover:not(:disabled) { background: var(--danger, #d33); color: #fff; }
+button.danger:hover:not(:disabled) { background-color: var(--danger, #d33); color: #fff; }
 .settings section { margin: 10px 0; }
 .settings .check { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .path-text { word-break: break-all; }
@@ -296,3 +296,14 @@ kbd { font-family: inherit; background: var(--surface-2); border: 1px solid var(
 .pw-badge { font-size: .75rem; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 .pw-badge.saved { background: var(--done-bg); color: var(--done-fg); border-color: transparent; }
 .pw-form, .pw-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
+
+/* Blue corner halo (reference image) on panels, dialogs, menus and buttons: a background-image layer
+   over the existing background-color, so it follows border-radius and never intercepts clicks.
+   Button state rules set background-color only (not the shorthand), or the halo would be wiped. */
+:root {
+  --halo-panel: radial-gradient(circle at 0 0, var(--halo) 0, transparent 180px);
+  --halo-btn: radial-gradient(circle at 0 0, var(--halo) 0, transparent 34px);
+  --halo-btn-hover: radial-gradient(circle at 0 0, var(--halo-hi) 0, transparent 44px);
+}
+.sidebar, .list-pane, .detail-pane, .dialog, .tools-list { background-image: var(--halo-panel); }
+button { background-image: var(--halo-btn); }
