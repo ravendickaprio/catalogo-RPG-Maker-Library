@@ -79,7 +79,8 @@ export type AppErrorKind =
   | "Conflict"
   | "DuplicateCode"
   | "ReadOnly"
-  | "Busy";
+  | "Busy"
+  | "SecureStorage";
 
 export interface AppError {
   kind: AppErrorKind;

@@ -5,6 +5,7 @@ import CoverImage from "./CoverImage";
 import { estadoClass } from "../lib/estado";
 import ConfirmDialog from "./ConfirmDialog";
 import GameForm from "./GameForm";
+import PagePassword from "./PagePassword";
 import { isFavorite } from "../lib/favorites";
 
 export interface DetailCommand {
@@ -310,6 +311,7 @@ const GameDetail = forwardRef<HTMLElement, Props>(function GameDetail(
             </button>
           </div>
           <GameFields game={shown} />
+          <PagePassword pagina={shown.pagina} onToast={onToast} />
           {shown.tags.length > 0 && (
             <ul className="tags" aria-label="Etiquetas">
               {shown.tags.map((t) => (

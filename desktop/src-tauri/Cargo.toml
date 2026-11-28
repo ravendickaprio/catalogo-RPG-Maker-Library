@@ -41,6 +41,19 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 webp = { version = "0.3", default-features = false }
 regex = "1"
 tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+
+# Almacén seguro del sistema para las contraseñas por página (ADR-019). Sin un backend
+# nativo activado, keyring 3 cae en silencio a un almacén en memoria: por eso cada
+# plataforma objetivo declara el suyo.
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["async-secret-service", "async-io", "crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
 
 [dev-dependencies]
 tempfile = "3"

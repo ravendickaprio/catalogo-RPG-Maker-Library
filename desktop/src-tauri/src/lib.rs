@@ -7,6 +7,7 @@ pub mod importer;
 pub mod maintenance;
 pub mod migrate;
 pub mod models;
+pub mod passwords;
 pub mod protocol;
 pub mod repo;
 pub mod search;
@@ -69,13 +70,20 @@ pub fn app_builder<R: tauri::Runtime>(
             commands::verify_backup,
             commands::restore_backup,
             commands::check_database,
-            commands::export_library
+            commands::export_library,
+            commands::page_passwords_status,
+            commands::get_page_password,
+            commands::set_page_password,
+            commands::delete_page_password,
+            commands::copy_page_password
         ])
 }
 
 pub fn run() {
     app_builder(tauri::Builder::default(), AppState::uninitialized())
         .plugin(tauri_plugin_dialog::init())
+        // Only used from Rust (copy_page_password); no clipboard permission is granted to the webview.
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let settings_path = app
                 .path()

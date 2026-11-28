@@ -75,6 +75,9 @@ Nota: las rutas de Windows (`C:\…`) y de Linux (`/home/…`) se marcan como «
 ## 9. Estadísticas
 **Herramientas → Estadísticas**: cobertura (descripción, portada, etiquetas, ruta), barras por estado, idioma, tipo, página, puntuación y etiquetas, y una tabla estado × idioma. Al pulsar una barra se filtra la biblioteca. Solo lee; no hay actividad por fecha porque el esquema no guarda fechas.
 
+## 9 bis. Contraseñas por página
+**Herramientas → Contraseñas por página** lista las páginas de la biblioteca (`ryuugames`, `Otome`…) e indica si cada una tiene contraseña. Puede añadirla, cambiarla, eliminarla, mostrarla u ocultarla, y copiarla. En el detalle de un juego cuya página tiene contraseña aparecen **Mostrar** y **Copiar**. Las contraseñas se guardan en el almacén seguro del sistema (Administrador de credenciales de Windows; GNOME Keyring/KWallet en Linux), **no en `juegos.db`**, así que no viajan con la base ni con los backups. Si el almacén no está disponible, la app lo dice y no guarda nada.
+
 ## 10. Copias de seguridad, restauración y exportación
 - **Backup automático:** antes de la **primera escritura de cada sesión** (y antes de importaciones, lotes y migraciones) la app copia la base con la API de backup de SQLite en la carpeta **`backups/` junto a la base de datos**, con nombre `juegos.db.bak-<fecha>`. Se conservan los 20 más recientes.
 - **Ajustes → Copias de seguridad:** lista los backups, permite **verificarlos** (`integrity_check` y esquema) y **restaurar**. Al restaurar, la app crea antes un backup «pre-restauración» de la base actual. Solo se aceptan archivos de la carpeta `backups/`. Si otra aplicación tiene la base bloqueada, la restauración falla sin cambiar nada.

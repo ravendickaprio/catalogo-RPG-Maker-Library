@@ -77,6 +77,7 @@ Datos de la app: `~/.config/local.rpgmakerlibrary.desktop` (ajustes) y `~/.local
 - **Abrir carpeta del juego:** la app no abre carpetas automáticamente ni ejecuta comandos de shell.
 - **Mayúsculas/minúsculas:** la búsqueda parcial pliega Unicode con `rpg_fold`; el orden por título usa `COLLATE NOCASE` de SQLite (solo ASCII), igual que antes. Puede haber diferencias de orden con acentos respecto a Python.
 - **Concurrencia:** `journal_mode = delete` (sin WAL). Si la base está en un recurso de red (NFS/SMB/Samba), los bloqueos de SQLite pueden no ser fiables: use una copia local **(?)**.
+- **Contraseñas por página:** necesitan un servicio Secret Service en ejecución y desbloqueado (GNOME Keyring o KWallet ≥ 5.97; KDE en Nobara lo trae). Si no lo hay, la app lo indica y no guarda nada (ADR-019). No hay dependencias nuevas de compilación (`zbus` es Rust puro) **(?)** sin probar en Linux.
 - **Bordes de ventana:** el aspecto del WebKitGTK varía con el tema GTK; no hay pruebas visuales en Linux todavía.
 
 ## 6. Verificación recomendada la primera vez

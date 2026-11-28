@@ -10,6 +10,7 @@ import DashboardDialog, { type DashboardFilter } from "./components/DashboardDia
 import ReviewDialog, { type ReviewCriterion } from "./components/ReviewDialog";
 import ShortcutsDialog from "./components/ShortcutsDialog";
 import ExportDialog from "./components/ExportDialog";
+import PasswordsDialog from "./components/PasswordsDialog";
 import FirstRunScreen from "./components/FirstRunScreen";
 import ToolsMenu from "./components/ToolsMenu";
 import WelcomeScreen, { welcomeOnStartup } from "./components/WelcomeScreen";
@@ -36,6 +37,7 @@ export default function App() {
   const [infoError, setInfoError] = useState<AppError | null>(null);
   const [sessionConfigError, setSessionConfigError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [passwordsOpen, setPasswordsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [estado, setEstado] = useState("");
   const [idioma, setIdioma] = useState("");
@@ -307,6 +309,7 @@ export default function App() {
       { id: "delete", label: "Eliminar juego seleccionado", run: () => sendCommand("delete") },
       { id: "import", label: "Importar juegos…", run: () => setImportOpen(true) },
       { id: "export", label: "Exportar biblioteca…", run: () => setExportOpen(true) },
+      { id: "passwords", label: "Contraseñas por página", run: () => setPasswordsOpen(true) },
       { id: "maintenance", label: "Centro de mantenimiento", run: () => setMaintOpen(true) },
       { id: "dashboard", label: "Estadísticas", run: () => setDashOpen(true) },
       { id: "review", label: "Revisión por tandas", run: () => {
@@ -413,6 +416,7 @@ export default function App() {
           items={[
             { id: "import", label: "Importar…", title: "Importar juegos desde una carpeta", run: () => setImportOpen(true) },
             { id: "export", label: "Exportar biblioteca…", title: "Guardar los datos en CSV o JSON", run: () => setExportOpen(true) },
+            { id: "passwords", label: "Contraseñas por página", title: "Contraseñas de descompresión de cada página", run: () => setPasswordsOpen(true) },
             { id: "maintenance", label: "Mantenimiento", title: "Detectar y corregir problemas de la biblioteca", run: () => setMaintOpen(true) },
             { id: "dashboard", label: "Estadísticas", title: "Resumen y cobertura de datos de la biblioteca", run: () => setDashOpen(true) },
             { id: "review", label: "Revisión por tandas", title: "Revisar tandas aleatorias de juegos", run: () => {
@@ -572,6 +576,7 @@ export default function App() {
         />
       )}
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} onDone={setToast} />}
+      {passwordsOpen && <PasswordsDialog paginas={vocab?.paginas ?? []} onClose={() => setPasswordsOpen(false)} onToast={setToast} />}
       {pendingAction && (
         <ConfirmDialog
           title="¿Descartar los cambios?"
