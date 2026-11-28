@@ -1,141 +1,101 @@
 # RPG Maker Library
 
-Una aplicación de escritorio para organizar, clasificar y administrar bibliotecas de juegos RPG Maker y otros proyectos similares. Permite mantener una colección organizada mediante portadas, códigos identificadores, estados, idiomas, categorías y etiquetas personalizadas.
+Aplicación de escritorio para organizar, clasificar y administrar bibliotecas de juegos RPG Maker y proyectos similares: portadas, códigos identificadores, estados, idiomas, páginas, tipos, puntuaciones y etiquetas personalizadas.
+
+La **aplicación principal** es la de escritorio en `desktop/` (Rust + Tauri 2, React + TypeScript y SQLite) para Windows y Linux. La versión anterior en Python/Tkinter se conserva como **legacy** en `legacy/python/` y sigue funcionando sobre la misma base de datos.
 
 ## ✨ Características principales
 
-- **Gestión de biblioteca:** agrega, edita y elimina juegos de tu colección.
-- **Galería y lista:** consulta tu biblioteca en diferentes formatos de visualización.
-- **Portadas:** almacena imágenes de los juegos directamente en la base de datos SQLite.
-- **Búsqueda y filtros:** encuentra juegos por título, código, estado, idioma, página o tipo.
-- **Clasificación personalizada:** organiza los juegos mediante etiquetas.
-- **Información detallada:** registra descripción, ruta, código identificador y puntuación.
-- **Estadísticas:** consulta información general de tu colección.
-- **Temas visuales:** interfaz con modos Claro, Oscuro y Noche.
-- **Personalización:** opciones de apariencia y compatibilidad con Nerd Fonts.
+- **Biblioteca:** vista de galería con tarjetas de portada o de lista, ambas virtualizadas para bibliotecas grandes.
+- **Búsqueda rápida:** búsqueda parcial con FTS5, filtros por estado, idioma, página, tipo y etiquetas, y orden configurable.
+- **Edición completa:** crear, editar y eliminar juegos, etiquetas y portadas (las portadas se convierten a WebP), con detección de cambios hechos por otras aplicaciones.
+- **Juego sugerido del día:** elige al azar un juego no terminado, sin modificar nada.
+- **Importador:** detecta juegos en carpetas (`.zip`, `.rar`, `.7z` y carpetas con código), con vista previa e historial para deshacer.
+- **Centro de mantenimiento:** detecta datos incompletos, rutas inexistentes y etiquetas huérfanas, aplica correcciones en lote y permite deshacerlas.
+- **Revisión por tandas, favoritos y estadísticas.**
+- **Contraseñas por página:** guarda la contraseña de descompresión de cada página (por ejemplo, Ryuugames) en el almacén seguro del sistema, no en la base de datos. Puede consultarse y copiarse desde la ficha del juego.
+- **Copias de seguridad:** copia automática antes de la primera escritura de cada sesión, y restauración y verificación de integridad.
+- **Exportación** a CSV o JSON.
+- **Interfaz:** tema oscuro moderno (además de Claro, Noche y Sistema), tipografía Fira, uso completo con teclado y paleta de comandos (`Ctrl+K`).
+- **Local:** sin cuenta, nube ni telemetría.
 
-## 📥 Importador masivo de juegos
+## 🚀 Instalación y uso
 
-Incluye un script independiente para importar juegos existentes a la biblioteca sin tener que registrarlos manualmente uno por uno.
+Los instaladores (Windows: NSIS/MSI; Linux: `.deb`, `.rpm` y AppImage) se generan con el flujo de GitHub Actions o localmente. Al primer inicio, la app pide elegir el archivo `juegos.db`.
 
-### Funcionalidades
-
-- **Detección automática:** busca recursivamente archivos `.zip`, `.rar` y `.7z`, además de carpetas cuyo nombre contenga un código identificador RY.
-- **Interpretación de nombres:** intenta identificar automáticamente el título, código, estado e idioma del juego.
-- **Detección de estados:**
-  - `[F]`: Terminado.
-  - `[P]`: Empezado.
-  - Sin marca reconocida: Sin empezar.
-- **Detección de idiomas:**
-  - `EN`: Inglés.
-  - `ES` o `ESP`: Español.
-  - Sin marca de idioma reconocida: Japonés.
-- **Prevención de duplicados:** evita importar códigos RY y rutas que ya estén registrados en la base de datos.
-- **Vista previa:** muestra los juegos detectados y la información que se utilizará antes de confirmar la importación.
-- **Resumen de resultados:** informa cuántos registros se agregaron, cuántos se omitieron por duplicados y cuántos no tenían un código RY.
-
-### Consideraciones
-
-- Solo importa elementos que tengan un código identificador RY reconocido.
-- Los registros nuevos se crean con la descripción y la portada vacías, para completarlas posteriormente desde el catálogo.
-- No extrae archivos comprimidos.
-- No mueve, renombra ni modifica los archivos originales.
-- Utiliza la misma base de datos `juegos.db` del catálogo.
-
-### Ejecución
+- Manual de usuario: [`docs/MANUAL.md`](docs/MANUAL.md)
+- Compilar en Linux (Nobara/Fedora): [`docs/BUILD_LINUX.md`](docs/BUILD_LINUX.md)
+- Desarrollo: [`desktop/README.md`](desktop/README.md)
 
 ```bash
-python legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py
-```
-
-También permite indicar las rutas directamente:
-
-```bash
-python legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/ruta/a/juegos.db"
+cd desktop
+npm install
+npm run tauri dev       # desarrollo
+npm run tauri build     # instaladores
 ```
 
 ## 🛠️ Tecnologías
 
-- **Python:** lenguaje principal.
-- **Tkinter / ttk:** interfaz gráfica.
-- **SQLite:** almacenamiento local de información.
-- **Pillow:** procesamiento de imágenes.
-- **WebP / JPEG:** formatos utilizados para optimizar las portadas.
+- **Rust + Tauri 2:** backend, acceso a SQLite (`rusqlite`), procesamiento de portadas y almacén seguro (`keyring`).
+- **React + TypeScript + Vite:** interfaz.
+- **SQLite:** almacenamiento local, con el mismo esquema que la versión legacy y sin WAL, así que ambas pueden compartir la base.
 
-## 📂 Archivos principales
+## 📂 Estructura
 
-| Archivo | Descripción |
+| Ruta | Descripción |
 |---|---|
-| `legacy/python/catalogo_rpgmaker-v04.py` | Aplicación principal del catálogo (versión Python legacy). |
-| `legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py` | Herramienta independiente para importar juegos existentes. |
-| `juegos.db` | Base de datos SQLite de la biblioteca. |
-| `config.json` | Preferencias y configuración visual. |
+| `desktop/` | Aplicación de escritorio principal (Tauri). |
+| `docs/` | Arquitectura, decisiones (ADR), manual, benchmarks y notas de versión. |
+| `tools/` | Herramientas de QA: interoperabilidad con Python, paridad y benchmarks. |
+| `legacy/python/` | Aplicación Python legacy y sus herramientas. |
+| `juegos.db` | Base de datos SQLite de la biblioteca (no se versiona). |
 
 ## 🗃️ Base de datos
 
-La aplicación utiliza SQLite para almacenar la información de la colección.
-
-Entre los datos principales de cada juego se encuentran:
+Cada juego guarda:
 
 - `id`: identificador interno.
 - `titulo`: nombre del juego.
 - `descripcion`: descripción.
 - `estado`: Sin empezar, Empezado o Terminado.
 - `idioma`: Español, Inglés o Japonés.
-- `imagen`: portada almacenada en la base de datos.
+- `imagen`: portada almacenada en la base.
 - `ruta`: ubicación del juego.
 - `codigo`: identificador personalizado.
 - `pagina`: fuente o página de procedencia.
 - `tipo`: clasificación del juego.
-- `puntuacion`: valoración de 0 a 5 estrellas.
+- `puntuacion`: valoración de 0 a 5.
 
-También utiliza tablas relacionadas para administrar etiquetas personalizadas.
+Las etiquetas se guardan en tablas relacionadas (`tags`, `juego_tags`). La app añade un índice de búsqueda regenerable (`juegos_busqueda` / `juegos_fts`) y migraciones versionadas que solo se aplican a petición y con copia previa. El archivo `.gitignore` excluye las bases de datos locales para que no se suban por accidente.
 
 ## 💾 Copias de seguridad
 
-Se recomienda realizar copias periódicas de `juegos.db`, ya que contiene la información de la biblioteca y las portadas almacenadas.
+La app crea `backups/<db>.bak-AAAAMMDD-HHMMSS` junto a la base antes de la primera escritura de cada sesión, y conserva las 20 más recientes. Aun así, se recomienda guardar copias periódicas de `juegos.db` fuera del equipo. Las contraseñas por página no están en la base ni en sus copias: viven en el almacén de credenciales del sistema.
 
-## 🖥️ Plataformas
+## 🧓 Versión legacy (Python)
 
-El proyecto está desarrollado en Python y utiliza tecnologías multiplataforma, con el objetivo de funcionar en Windows y Linux.
+La aplicación original en Python/Tkinter se conserva en `legacy/python/` como legado funcional. Usa el `juegos.db` de la raíz del repositorio y puede usarse a la vez que la app nueva (comprobado con `tools/interop_test.py`).
 
-## 🚧 Desarrollo
+| Archivo | Descripción |
+|---|---|
+| `legacy/python/catalogo_rpgmaker-v04.py` | Catálogo Python v4 (Tkinter). |
+| `legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py` | Importador masivo antiguo. |
+| `legacy/python/herramientas/catalogo_rpgmaker-descripciones.py` | Completar descripciones por tandas. |
+| `legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py` | Editor completo por tandas de 20 juegos. |
 
-Este proyecto está en desarrollo. Se irán incorporando mejoras y nuevas funcionalidades para facilitar la administración de colecciones grandes de juegos.
+Requisitos: Python 3 con Tkinter y Pillow.
+
+```bash
+python legacy/python/catalogo_rpgmaker-v04.py
+python legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py
+python legacy/python/herramientas/catalogo_rpgmaker-descripciones.py
+python legacy/python/herramientas/Importar_Juegos_RPG_Maker_v2.py --carpeta "/ruta/a/tus/juegos" --db "/ruta/a/juegos.db"
+```
+
+- **Editor completo:** revisa tandas de hasta 20 juegos con descripción pendiente y permite editar todos los campos de la ficha. Crea una copia (`juegos.db.backup-before-description-edit`) antes del primer cambio.
+- **Descripciones:** solo edita la descripción, con la misma copia previa.
+- **Importador antiguo:** tiene errores conocidos (títulos «RY …», estados falsos, códigos cortados por `_`). Para importaciones nuevas, use el importador de la app de escritorio.
 
 ## 📄 Licencia
 
 Consulta el archivo `LICENSE` para conocer los términos de uso y distribución del proyecto.
-
-
-## 📝 Herramienta para completar descripciones
-
-Script independiente para revisar juegos con descripción vacía en grupos de hasta 20 registros:
-
-```bash
-python legacy/python/herramientas/catalogo_rpgmaker-descripciones.py
-```
-
-- Selecciona una tanda de hasta 20 juegos sin descripción.
-- Permite escribir y guardar la descripción individualmente.
-- Al guardar, el juego se retira de la tanda y deja de aparecer en futuras selecciones pendientes.
-- Crea una copia de seguridad de `juegos.db` antes del primer cambio (`juegos.db.backup-before-description-edit`).
-- Incluye navegación anterior, omitir, guardar y guardar/siguiente.
-- No altera otros campos ni elimina registros.
-- Usa el `juegos.db` de la raíz del repositorio.
-
-
-## Archivos de base de datos y Git
-
-El archivo `.gitignore` excluye bases de datos locales (`.db`, `.sqlite`, `.sqlite3` y archivos auxiliares de estas extensiones) para evitar que bases de datos de trabajo se agreguen o se actualicen accidentalmente en Git.
-
-
-## Editor independiente de registros (descripciones)
-
-La herramienta `legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py` conserva el flujo de revisión por tandas de hasta 20 juegos con descripción pendiente y la identidad visual del catálogo v4 (temas Claro, Oscuro y Noche). Además de completar la descripción, permite editar los campos de la ficha: título, código, estado, idioma, página, tipo, puntuación, tags, ruta e imagen.
-
-```bash
-python legacy/python/herramientas/catalogo_rpgmaker-editor-completo.py
-```
-
-Antes de guardar cambios crea una copia de seguridad local de la base de datos. Los registros guardados dejan de aparecer en las tandas pendientes. Esta utilidad no elimina juegos ni modifica los archivos de juego en sus carpetas.
